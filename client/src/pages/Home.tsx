@@ -6,9 +6,9 @@ export default function Home() {
   const [orderStatus, setOrderStatus] = useState<'shopping' | 'success'>('shopping');
   const [filter, setFilter] = useState('All');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [lastTotal, setLastTotal] = useState(0);
   const lettersRef = useRef<HTMLDivElement>(null);
 
-  // 💎 DYNAMIC FAVICON & TITLE SYSTEM
   useEffect(() => {
     const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement || document.createElement('link');
     link.rel = 'icon';
@@ -28,11 +28,23 @@ export default function Home() {
   const handleCheckout = (e: React.FormEvent) => {
     e.preventDefault();
     setIsProcessing(true);
+    const total = cart.reduce((sum, item) => sum + item.price, 0);
+    setLastTotal(total);
     setTimeout(() => {
       setIsProcessing(false);
       setOrderStatus('success');
       setCart([]);
     }, 1800);
+  };
+
+  const downloadReceipt = () => {
+    const content = `GRANDPA'S LEGACY MARKET\nEst. 1954\n\nORDER STATUS: Honorably Received\nTOTAL: $${lastTotal.toFixed(2)}\n\nThank you for being part of our neighborhood.`;
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = "Grandpas_Receipt.txt";
+    link.click();
   };
 
   const scrollToLetters = () => {
@@ -57,7 +69,10 @@ export default function Home() {
           <div className="text-6xl mb-6">🤝</div>
           <h2 className="text-3xl font-black text-white italic tracking-tighter mb-4 uppercase">Honorably Received.</h2>
           <p className="text-zinc-500 text-xs font-bold leading-loose mb-10 max-w-xs mx-auto">Grandpa's legacy is on the way. Your order has been hand-selected with care.</p>
-          <button onClick={() => setOrderStatus('shopping')} className="bg-white text-black px-10 py-4 rounded-xl font-black uppercase tracking-widest hover:bg-orange-500 hover:text-white transition-all">Back to Market</button>
+          <div className="flex flex-col gap-3">
+            <button onClick={() => setOrderStatus('shopping')} className="bg-white text-black px-10 py-4 rounded-xl font-black uppercase tracking-widest hover:bg-orange-500 hover:text-white transition-all shadow-xl">Back to Market</button>
+            <button onClick={downloadReceipt} className="text-zinc-600 text-[10px] font-black uppercase tracking-[0.3em] hover:text-white transition-colors py-2">Download Receipt</button>
+          </div>
         </div>
       </div>
     );
@@ -71,7 +86,7 @@ export default function Home() {
             <h1 className="text-2xl font-black italic text-white tracking-tighter uppercase leading-none">GRANDPA'S<span className="text-orange-500">.</span></h1>
             <p onClick={(e) => {e.stopPropagation(); scrollToLetters();}} className="text-[9px] font-black tracking-[0.3em] text-zinc-600 uppercase hover:text-orange-500 transition-colors">Since 1954</p>
           </div>
-          <button onClick={() => setShowCheckout(!showCheckout)} className="bg-zinc-100 text-black px-6 py-2 rounded-full text-[10px] font-black tracking-widest hover:bg-orange-500 hover:text-white transition-all">
+          <button onClick={() => setShowCheckout(!showCheckout)} className="bg-zinc-100 text-black px-6 py-2 rounded-full text-[10px] font-black tracking-widest hover:bg-orange-500 hover:text-white transition-all shadow-lg">
              BAG ({cart.length})
           </button>
         </div>
@@ -81,8 +96,8 @@ export default function Home() {
         {!showCheckout ? (
           <>
             <div className="mb-16 mt-4 text-left">
-              <h2 className="text-5xl md:text-6xl font-black italic tracking-tighter uppercase leading-none mb-4">Curated <br/><span className="text-zinc-800">With Love.</span></h2>
-              <p className="text-zinc-600 text-[10px] font-black uppercase tracking-[0.4em]">Serving the neighborhood honestly for 70 years.</p>
+              <h2 className="text-5xl md:text-6xl font-black italic tracking-tighter uppercase leading-none mb-4 text-white">Curated <br/><span className="text-zinc-800">With Love.</span></h2>
+              <p className="text-zinc-600 text-[10px] font-black uppercase tracking-[0.4em] leading-loose">Serving the neighborhood honestly for 70 years.</p>
             </div>
 
             <div className="flex gap-3 mb-12 overflow-x-auto pb-2 no-scrollbar">
@@ -116,7 +131,7 @@ export default function Home() {
 
             <section ref={lettersRef} className="mb-24 border-t border-zinc-900 pt-16">
               <h3 className="text-center text-[10px] font-black uppercase tracking-[0.5em] text-orange-500 mb-10 italic">Neighborhood Letters</h3>
-              <div className="grid md:grid-cols-2 gap-6">
+              <div className="grid md:grid-cols-2 gap-6 text-left">
                 <div className="bg-zinc-900/30 p-8 rounded-[2.5rem] border border-zinc-800">
                   <div className="text-orange-500 mb-4 text-xs">★★★★★</div>
                   <p className="text-zinc-400 text-sm font-medium leading-relaxed italic mb-6">"It's rare to find a business that balances high-end technology with such a warm, personal touch. Grandpa would be beaming."</p>
@@ -141,7 +156,7 @@ export default function Home() {
                   <span>TOTAL</span><span className="text-orange-500">${cart.reduce((sum, item) => sum + item.price, 0).toFixed(2)}</span>
                 </div>
               </div>
-              <button type="submit" disabled={isProcessing} className={`w-full font-black py-5 rounded-xl text-[11px] transition-all uppercase tracking-[0.3em] ${isProcessing ? 'bg-zinc-800 text-zinc-500 cursor-wait' : 'bg-white text-black hover:bg-orange-600'}`}>
+              <button type="submit" disabled={isProcessing} className={`w-full font-black py-5 rounded-xl text-[11px] transition-all uppercase tracking-[0.3em] shadow-xl ${isProcessing ? 'bg-zinc-800 text-zinc-500 cursor-wait' : 'bg-white text-black hover:bg-orange-600 hover:text-white'}`}>
                 {isProcessing ? "Verifying Legacy..." : "Confirm & Pay"}
               </button>
               <button type="button" onClick={() => setShowCheckout(false)} className="w-full text-zinc-600 text-[10px] mt-4 font-black uppercase tracking-widest text-center hover:text-white">Cancel</button>
@@ -151,15 +166,15 @@ export default function Home() {
       </main>
 
       <footer className="bg-black border-t border-zinc-900 pt-20 pb-12 px-8">
-        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-12 mb-16">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-12 mb-16 text-left">
           <div>
             <h4 className="text-white font-black italic text-2xl mb-4 uppercase tracking-tighter leading-none">GRANDPA'S<span className="text-orange-500">.</span></h4>
             <p className="text-[10px] text-zinc-600 uppercase font-black tracking-[0.2em] leading-loose">We deliver more than just groceries; we deliver a legacy of care that spans generations.</p>
           </div>
           <div>
             <h5 className="text-white text-[11px] font-black uppercase tracking-[0.3em] mb-6">Philosophy</h5>
-            <p className="text-zinc-600 text-[9px] font-black uppercase tracking-widest mb-3 hover:text-white cursor-default">Honorable Sourcing</p>
-            <p className="text-zinc-600 text-[9px] font-black uppercase tracking-widest hover:text-white cursor-default">Community Focus</p>
+            <p className="text-zinc-600 text-[9px] font-black uppercase tracking-widest mb-3">Honorable Sourcing</p>
+            <p className="text-zinc-600 text-[9px] font-black uppercase tracking-widest">Community Focus</p>
           </div>
           <div className="text-right">
              <h5 className="text-white text-[11px] font-black uppercase tracking-[0.3em] mb-6">Legacy</h5>

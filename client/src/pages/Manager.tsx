@@ -221,7 +221,7 @@ export default function Manager() {
           <div className="bg-zinc-950 border border-zinc-900 p-6 rounded-3xl flex items-center justify-between">
             <div>
               <p className="text-xs font-black text-zinc-500 uppercase mb-1">Filtered Revenue</p>
-              <p className="text-3xl font-black text-orange-500 italic">${totalRevenue.toFixed(2)}</p>
+              <p className="text-3xl font-black text-orange-500 italic">₦{totalRevenue.toLocaleString()}</p>
             </div>
             <DollarSign className="text-zinc-800" size={40} />
           </div>
@@ -277,7 +277,7 @@ export default function Manager() {
                     <img src={p.image} className="w-8 h-8 rounded-lg object-cover bg-zinc-800" alt="" />
                     <div>
                       <p className="text-xs font-black uppercase">{p.name}</p>
-                      <p className="text-xs text-orange-500 font-bold">${p.price}</p>
+                      <p className="text-xs text-orange-500 font-bold">₦{p.price.toLocaleString()}</p>
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -340,7 +340,7 @@ export default function Manager() {
                         <p className="text-[11px] font-medium leading-relaxed">{order.items}</p>
                         <div className="mt-4 flex justify-between items-center border-t border-zinc-900/50 pt-4">
                           <p className="text-[10px] font-black uppercase">Total Paid</p>
-                          <p className="text-lg font-black italic text-orange-500">${order.total_price?.toFixed(2)}</p>
+                          <p className="text-lg font-black italic text-orange-500">₦{order.total_price?.toLocaleString()}</p>
                         </div>
                       </div>
                       {showAddresses && order.address && (

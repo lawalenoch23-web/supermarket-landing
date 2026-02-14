@@ -205,7 +205,7 @@ export default function Home() {
             </div>
             <div className="px-4 text-center">
               <h3 className="text-xs font-black italic uppercase mb-2">{item.name}</h3>
-              <p className="text-orange-500 font-black mb-8 text-xl italic">${item.price?.toFixed(2)}</p>
+              <p className="text-orange-500 font-black mb-8 text-xl italic">₦{item.price?.toLocaleString()}</p>
               <button onClick={() => { setCart([...cart, item]); triggerCartEffect(); }} className="w-full bg-zinc-900 text-zinc-500 py-5 rounded-2xl text-[10px] font-black uppercase group-hover:bg-white group-hover:text-black transition-all">Add to Bag</button>
             </div>
           </div>
@@ -242,7 +242,7 @@ export default function Home() {
                 <div key={i} className="bg-black border border-zinc-900 p-5 rounded-2xl flex justify-between items-center group">
                   <span className="text-[10px] font-black uppercase italic tracking-tighter">{item.name}</span>
                   <div className="flex items-center gap-4">
-                    <span className="text-orange-500 font-bold text-[10px]">${item.price.toFixed(2)}</span>
+                    <span className="text-orange-500 font-bold text-[10px]">₦{item.price.toLocaleString()}</span>
                     <button onClick={() => { const n = [...cart]; n.splice(i,1); setCart(n); }} className="text-red-900 hover:text-red-500 text-[8px] font-black uppercase opacity-0 group-hover:opacity-100 transition-opacity">Remove</button>
                   </div>
                 </div>
@@ -254,7 +254,7 @@ export default function Home() {
               <input placeholder="FULL NAME" value={clientName} onChange={e => setClientName(e.target.value.toUpperCase())} className="w-full bg-black border border-zinc-900 rounded-2xl py-6 px-8 text-[11px] font-black uppercase outline-none focus:border-orange-500" />
               
               <div className="flex items-center justify-between p-3 bg-zinc-900/50 rounded-xl mb-4 border border-zinc-800">
-                <span className="text-[10px] font-black text-zinc-500 uppercase">Need Delivery? (+$5.99)</span>
+                <span className="text-[10px] font-black text-zinc-500 uppercase">Need Delivery? (+₦5.99)</span>
                 <button 
                   onClick={() => setShowAddresses(!showAddresses)}
                   className={`w-10 h-5 rounded-full transition-all relative ${showAddresses ? 'bg-orange-500' : 'bg-zinc-700'}`}
@@ -276,7 +276,7 @@ export default function Home() {
             <div className="flex justify-between items-center mb-10 px-4 border-t border-zinc-900 pt-8">
               <span className="text-2xl font-black italic uppercase">Total</span>
               <span className="text-2xl font-black italic text-orange-500">
-                ${(cart.reduce((s, i) => s + i.price, 0) + (showAddresses ? 5.99 : 0)).toFixed(2)}
+                ₦{(cart.reduce((s, i) => s + i.price, 0) + (showAddresses ? 5.99 : 0)).toLocaleString()}
               </span>
             </div>
 

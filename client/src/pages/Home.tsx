@@ -156,6 +156,15 @@ export default function Home() {
             </div>
           )}
         </div>
+
+        <div className="flex justify-center gap-6 mt-10 pb-10">
+          <Link to="/track" className="text-[10px] font-black text-zinc-500 hover:text-orange-500 uppercase italic">
+            Track Order
+          </Link>
+          <Link to="/contact" className="text-[10px] font-black text-zinc-500 hover:text-orange-500 uppercase italic">
+            Contact Us
+          </Link>
+        </div>
         <div className="flex gap-4">
           <button onClick={() => setShowCheckout(true)} className={`border border-white/20 rounded-full px-8 py-3 text-[10px] font-black uppercase tracking-widest bg-black transition-all ${cartEffect ? 'scale-110 border-orange-500 shadow-[0_0_30px_rgba(234,88,12,0.5)]' : ''}`}>Bag ({cart.length})</button>
         </div>

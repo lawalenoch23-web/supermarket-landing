@@ -255,6 +255,47 @@ export default function Manager() {
             </div>
           </section>
 
+          {/* --- SUPPORT MESSAGES UI SECTION --- */}
+          <section className="mt-20 px-4 pb-20 border-t border-zinc-900 pt-10">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+              <h2 className="text-sm font-black uppercase italic tracking-widest text-orange-500">
+                Incoming Support Tickets
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {msgs.length === 0 ? (
+                <p className="text-[10px] text-zinc-700 font-black uppercase tracking-widest">No messages yet...</p>
+              ) : (
+                msgs.map((m: any) => (
+                  <div key={m.id} className="bg-zinc-950 border border-zinc-900 p-8 rounded-[2.5rem] hover:border-zinc-800 transition-all group">
+                    <div className="flex justify-between items-start mb-4">
+                      <span className="text-[10px] font-black text-white bg-zinc-900 px-3 py-1 rounded-full uppercase italic">
+                        
+                        {m.name}
+                      </span> 
+                      <span className="text-zinc-600 text-[8px] font-bold">
+                        {new Date(m.created_at).toLocaleDateString()}
+                      </span>
+          
+                    </div>
+
+                    <p className="text-[9px] text-zinc-500 mb-4 font-bold lowercase tracking-tight">
+                      {m.email}
+                    </p>
+
+                    <div className="bg-black p-4 rounded-2xl border border-zinc-900 group-hover:border-orange-500/30 transition-colors">
+                      <p className="text-[11px] text-zinc-300 leading-relaxed italic font-medium">
+                        "{m.message}"
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
           <section className="bg-zinc-950 border border-zinc-900 p-8 rounded-3xl">
             <h2 className="text-xs font-black uppercase text-zinc-500 mb-6 flex items-center gap-2">
               <PackagePlus size={14}/> Add Product

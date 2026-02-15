@@ -158,9 +158,28 @@ export default function Manager() {
   };
 
   const deleteProduct = async (id: number) => {
+    // 1. Safety check: make sure ID exists
+    if (!id) {
+      alert("Error: This product has no ID. Refresh the page and try again.");
+      return;
+    }
+
     if (!confirm("Delete product?")) return;
-    const { error } = await supabase.from('products').delete().eq('id', id);
-    if (!error) fetchManagerData();
+
+    // 2. Perform the delete
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', id);
+
+    // 3. Handle the result
+    if (error) {
+      console.error("Delete Error:", error);
+      alert("Delete failed: " + error.message);
+    } else {
+      alert("Product deleted successfully!");
+      fetchManagerData(); // Refresh the list
+    }
   };
 
   const updateStatus = async (orderId: number, newStatus: string) => {
@@ -421,9 +440,13 @@ export default function Manager() {
                   {/* Product Image with Upload Option */}
                   <div className="relative group mb-3">
                     <img 
-                      src={p.image_url || 'https://via.placeholder.com/400'} 
+                      src={p.image_url || p.image} 
                       alt={p.name}
                       className="w-full h-32 object-cover rounded-xl"
+                      onError={(e) => {
+                        // If the image fails to load, replace it with a placeholder
+                        (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400?text=No+Image';
+                      }}
                     />
                     <label 
                       htmlFor={`replace-image-${p.id}`}

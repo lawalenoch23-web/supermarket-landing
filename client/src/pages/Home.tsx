@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { Heart, ShoppingBag, Search, Edit3, Save, Trash2, CheckCircle2, Send, RefreshCw, X, Minus, Plus } from 'lucide-react';
-
+import { Link } from 'react-router-dom';
 export default function Home() {
   // --- 1. CORE SYSTEM & UI STATE ---
   const [storeName, setStoreName] = useState('LOCAL MARKET');

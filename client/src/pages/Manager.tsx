@@ -24,7 +24,7 @@ export default function Manager() {
     name: '',
     price: '',
     image_url: '',
-    category_id: ''
+    category: ''
   });
 
   // --- 2. ANALYTICS ---
@@ -121,16 +121,30 @@ export default function Manager() {
   };
 
   const handleAddProduct = async () => {
-    if (!newName || !newPrice || !newCategory) return;
+    // 1. Validation: Make sure we have the basics and an image URL
+    if (!newName || !newPrice || !newCategory) {
+      alert("Please fill in all fields");
+      return;
+    }
+
+    // 2. The Insert: Matching your Supabase column names exactly
     const { error } = await supabase.from('products').insert([{
       name: newName.toUpperCase(),
       price: parseFloat(newPrice),
-      category: newCategory,
-      image: newProduct.image_url || 'https://via.placeholder.com/400'
+      category: newCategory, // Matches your 'text' column in Supabase
+      image: newProduct.image_url // Correctly maps image_url to image column
     }]);
-    if (!error) {
-      setNewName(''); setNewPrice(''); setNewImage('');
-      setNewProduct({ name: '', price: '', image_url: '', category_id: '' });
+
+    if (error) {
+      console.error("Supabase Error:", error);
+      alert("Upload failed: " + error.message);
+    } else {
+      // 3. Reset all states after success
+      setNewName(''); 
+      setNewPrice(''); 
+      setNewCategory('');
+      setNewProduct({ name: '', price: '', image_url: '', category: '' });
+      alert("Product added successfully!");
       fetchManagerData();
     }
   };
@@ -407,7 +421,7 @@ export default function Manager() {
                   {/* Product Image with Upload Option */}
                   <div className="relative group mb-3">
                     <img 
-                      src={p.image || 'https://via.placeholder.com/400'} 
+                      src={p.image_url || 'https://via.placeholder.com/400'} 
                       alt={p.name}
                       className="w-full h-32 object-cover rounded-xl"
                     />

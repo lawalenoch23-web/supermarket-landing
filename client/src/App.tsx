@@ -1,4 +1,4 @@
-  import { Routes, Route } from "react-router-dom"; // Use Routes, not Route, for the wrapper
+  import {HashRouter as Routes, Route } from "react-router-dom"; // Use Routes, not Route, for the wrapper
   import { MessageCircle } from "lucide-react";
   import Home from "./pages/Home";
   import TrackOrder from "./pages/TrackOrder";

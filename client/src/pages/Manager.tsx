@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { 
   Trash2, LayoutDashboard, PlusCircle, 
-  Save, Clock, MapPin, Calendar, PackagePlus, Edit3, DollarSign, ShoppingBag, AlertTriangle, Download, Upload 
+  Save, Clock, MapPin, Calendar, PackagePlus, Edit3, DollarSign, ShoppingBag, AlertTriangle, Download, Upload , ChevronDown, ChevronUp
 } from 'lucide-react';
 
 export default function Manager() {
@@ -20,6 +20,9 @@ export default function Manager() {
   const [showAddresses, setShowAddresses] = useState(false);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [dateFilter, setDateFilter] = useState('ALL_TIME');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('DEFAULT'); // Options: DEFAULT, PRICE_LOW, PRICE_HIGH, CATEGORY
+  const [showInventory, setShowInventory] = useState(false);
   const [newProduct, setNewProduct] = useState({
     name: '',
     price: '',
@@ -247,6 +250,7 @@ export default function Manager() {
   };
 
   return (
+  
     <div className="min-h-screen bg-black text-white p-8 font-sans">
       <header className="mb-12 border-b border-zinc-900 pb-8">
         <div className="flex items-center justify-between mb-8">
@@ -399,91 +403,140 @@ export default function Manager() {
               </a>
             </div>
           ))}
+          <button 
+            onClick={() => setShowInventory(!showInventory)}
+            className="mb-6 w-full py-4 bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center justify-center gap-3 hover:bg-zinc-800 transition-all group"
+          >
+            <PackagePlus size={18} className={showInventory ? "text-orange-500" : "text-zinc-500"} />
+            <span className="text-[11px] font-black uppercase tracking-widest">
+              {showInventory ? "CLOSE INVENTORY TOOLS" : "OPEN INVENTORY MANAGEMENT"}
+            </span>
+          </button>
+          
+          <section className="bg-zinc-950 border border-zinc-900 p-6 rounded-3xl">
+            <div className="space-y-4 mb-6">
+              <h2 className="text-xs font-black uppercase text-zinc-500 flex items-center gap-2">
+                <PackagePlus size={14}/> Inventory Management
+              </h2>
 
-          <section className="bg-zinc-950 border border-zinc-900 p-8 rounded-3xl">
-            <h2 className="text-xs font-black uppercase text-zinc-500 mb-6 flex items-center gap-2">
-              <PackagePlus size={14}/> Add Product
-            </h2>
-            <div className="space-y-3 mb-8">
-              <input placeholder="NAME" value={newName} onChange={e => setNewName(e.target.value)} className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-xs font-black uppercase outline-none focus:border-orange-500" />
-              <input placeholder="PRICE" type="number" value={newPrice} onChange={e => setNewPrice(e.target.value)} className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-xs font-black uppercase outline-none focus:border-orange-500" />
+              {/* SEARCH & SORT BAR */}
+              <div className="flex flex-col gap-2">
+                <input 
+                  type="text"
+                  placeholder="SEARCH PRODUCTS..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-2 text-[10px] font-black uppercase outline-none focus:border-orange-500 transition-colors"
+                />
 
-              <select value={newCategory} onChange={e => setNewCategory(e.target.value)} className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-xs font-black uppercase">
+                <select 
+                  value={sortBy} 
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-[10px] font-black uppercase outline-none text-zinc-400"
+                >
+                  <option value="DEFAULT">SORT BY</option>
+                  <option value="PRICE_LOW">PRICE: LOW TO HIGH</option>
+                  <option value="PRICE_HIGH">PRICE: HIGH TO LOW</option>
+                  <option value="CATEGORY">CATEGORY</option>
+                </select>
+              </div>
+            </div>
+
+            {/* COMPACT GRID */}
+            <div className="grid grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-2 no-scrollbar mb-6">
+              {products
+                .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                .sort((a, b) => {
+                  if (sortBy === 'PRICE_LOW') return a.price - b.price;
+                  if (sortBy === 'PRICE_HIGH') return b.price - a.price;
+                  if (sortBy === 'CATEGORY') return (a.category || '').localeCompare(b.category || '');
+                  return 0;
+                })
+                .map(p => (
+                  <div key={p.id} className="bg-black/40 p-3 rounded-xl border border-zinc-900 flex flex-col gap-2 group hover:border-zinc-700 transition-colors">
+                    <div className="relative group/img h-24">
+                      <img 
+                        src={p.image || p.image_url || 'https://via.placeholder.com/400'} 
+                        className="w-full h-full object-cover rounded-lg bg-zinc-900"
+                        onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400?text=Error'; }}
+                      />
+                      <input 
+                        type="file" accept="image/*" id={`replace-${p.id}`} className="hidden" 
+                        onChange={(e) => handleReplaceImageUrl(p.id, e)} 
+                      />
+                      <label htmlFor={`replace-${p.id}`} className="absolute inset-0 bg-black/70 opacity-0 group-hover/img:opacity-100 transition-all flex flex-col items-center justify-center cursor-pointer rounded-lg text-[9px] font-black">
+                        <Upload size={14} className="mb-1" />
+                        UPDATE
+                      </label>
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black uppercase truncate leading-tight mb-1">{p.name}</p>
+                      <div className="flex justify-between items-center">
+                        <p className="text-[10px] text-orange-500 font-bold">₦{p.price.toLocaleString()}</p>
+                        <div className="flex gap-2">
+                          <button onClick={() => updatePrice(p.id)} className="text-zinc-600 hover:text-white"><Edit3 size={12}/></button>
+                          <button onClick={() => deleteProduct(p.id)} className="text-zinc-600 hover:text-red-500"><Trash2 size={12} /></button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+
+            {/* ADD PRODUCT FORM */}
+            <div className="pt-6 border-t border-zinc-900 space-y-2">
+              <p className="text-[9px] font-black text-zinc-600 uppercase mb-2 italic text-center">Add New Item</p>
+              <input placeholder="NAME" value={newName} onChange={e => setNewName(e.target.value)} className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:border-orange-500" />
+              <input placeholder="PRICE" type="number" value={newPrice} onChange={e => setNewPrice(e.target.value)} className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:border-orange-500" />
+              <select value={newCategory} onChange={e => setNewCategory(e.target.value)} className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase">
                 <option value="">CATEGORY</option>
                 {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
               </select>
 
-              {/* Image Upload for New Product */}
               <div className="relative">
-                <input 
-                  type="file" 
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="hidden" 
-                  id="new-product-image"
-                />
-                <label 
-                  htmlFor="new-product-image"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-xs font-black uppercase flex items-center justify-center gap-2 cursor-pointer hover:bg-zinc-800 transition-colors"
-                >
-                  <Upload size={14} />
-                  {newProduct.image_url ? 'IMAGE UPLOADED ✓' : 'CLICK TO UPLOAD IMAGE'}
+                <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" id="new-product-grid" />
+                <label htmlFor="new-product-grid" className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase flex items-center justify-center gap-2 cursor-pointer hover:bg-zinc-800">
+                  <Upload size={12} />
+                  {newProduct.image_url ? 'UPLOADED ✓' : 'UPLOAD IMAGE'}
                 </label>
               </div>
 
-              <button onClick={handleAddProduct} className="w-full bg-orange-600 py-4 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-orange-500">Update Inventory</button>
-            </div>
-
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {products.map(p => (
-                <div key={p.id} className="bg-black/40 p-4 rounded-2xl border border-zinc-900">
-                  {/* Product Image with Upload Option */}
-                  <div className="relative group mb-3">
-                    <img 
-                      src={p.image_url || p.image} 
-                      alt={p.name}
-                      className="w-full h-32 object-cover rounded-xl"
-                      onError={(e) => {
-                        // If the image fails to load, replace it with a placeholder
-                        (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400?text=No+Image';
-                      }}
-                    />
-                    <label 
-                      htmlFor={`replace-image-${p.id}`}
-                      className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer rounded-xl"
-                    >
-                      <div className="text-center">
-                        <Upload className="mx-auto mb-2" size={20} />
-                        <span className="text-xs font-black uppercase">Replace Image</span>
-                      </div>
-                    </label>
-                    <input 
-                      type="file" 
-                      accept="image/*"
-                      id={`replace-image-${p.id}`}
-                      onChange={(e) => handleReplaceImageUrl(p.id, e)}
-                      className="hidden"
-                    />
-                  </div>
-
-                  {/* Product Info and Actions */}
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-xs font-black uppercase">{p.name}</p>
-                      <p className="text-xs text-orange-500 font-bold">₦{p.price.toLocaleString()}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => updatePrice(p.id)} className="text-zinc-800 hover:text-white"><Edit3 size={14}/></button>
-                      <button onClick={() => deleteProduct(p.id)} className="text-zinc-800 hover:text-red-500"><Trash2 size={14} /></button>
-                    </div>
-                  </div>
-                </div>
-              ))}
+              <button onClick={handleAddProduct} className="w-full bg-orange-600 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-orange-500 transition-colors mt-2">
+                Add to Inventory
+              </button>
             </div>
           </section>
-        </div>
-
-        <div className="lg:col-span-8 space-y-8">
+          {/* THE TOGGLE BUTTON */}
+          <button 
+            onClick={() => setShowInventory(!showInventory)}
+            className="w-full py-4 bg-zinc-900/50 border border-zinc-800 rounded-2xl flex items-center justify-center gap-3 hover:bg-orange-600/10 hover:border-orange-500/50 transition-all mb-8 group"
+          >
+            <div className={`p-1 rounded-full transition-colors ${showInventory ? 'bg-orange-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>
+              {showInventory ? <ChevronUp size={16} /> : <PackagePlus size={16} />}
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+              {showInventory ? "Hide Inventory Management" : "Open Inventory Management"}
+            </span>
+          </button>
+          {/* THE INVENTORY GRID (Laptop-Optimized) */}
+          {showInventory && (
+            <section className="bg-zinc-950 border border-zinc-900 p-6 rounded-3xl animate-in fade-in slide-in-from-top-4 duration-300 mb-12">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                {products
+                  .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                  .map(p => (
+                    <div key={p.id} className="bg-black/40 p-3 rounded-xl border border-zinc-900 group hover:border-orange-500/50 transition-all">
+                      <div className="h-24 mb-2 overflow-hidden rounded-lg bg-zinc-900">
+                        <img src={p.image || p.image_url} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                      </div>
+                      <p className="text-[10px] font-black uppercase truncate mb-1">{p.name}</p>
+                      <p className="text-[10px] text-orange-500 font-bold">₦{p.price.toLocaleString()}</p>
+                    </div>
+                  ))}
+              </div>
+            </section>
+          )}
           <section className="bg-zinc-950 border border-zinc-900 rounded-3xl overflow-hidden">
             <div className="p-8 border-b border-zinc-900 bg-zinc-900/20">
               <h2 className="text-xs font-black uppercase tracking-widest flex items-center gap-2">

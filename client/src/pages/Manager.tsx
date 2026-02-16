@@ -594,42 +594,43 @@ export default function Manager() {
               </div>
             ) : (
               <>
-                {/* FILTERS - REDESIGNED */}
-                <div className="bg-zinc-950/50 border border-zinc-900 rounded-2xl p-4 mb-6">
+                {/* FILTERS - REDESIGNED & Mobile Optimized */}
+                <div className="bg-zinc-950/50 border border-zinc-900 rounded-2xl p-3 md:p-4 mb-6">
                   {/* ORDER TYPE FILTER - Primary */}
-                  <div className="mb-4 pb-4 border-b border-zinc-800/50">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Filter size={14} className="text-orange-500" />
-                      <span className="text-[10px] font-black text-zinc-600 uppercase tracking-wider">Order Type</span>
+                  <div className="mb-3 md:mb-4 pb-3 md:pb-4 border-b border-zinc-800/50">
+                    <div className="flex items-center gap-2 mb-2 md:mb-3">
+                      <Filter size={12} className="text-orange-500 md:w-3.5 md:h-3.5" />
+                      <span className="text-[9px] md:text-[10px] font-black text-zinc-600 uppercase tracking-wider">Order Type</span>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       {['PICKUP', 'DELIVERY', 'ALL'].map((type) => (
                         <button
                           key={type}
                           onClick={() => setOrderTypeFilter(type as 'PICKUP' | 'DELIVERY' | 'ALL')}
-                          className={`py-3 rounded-xl text-xs font-black transition-all ${
+                          className={`py-2.5 md:py-3 rounded-xl text-[10px] md:text-xs font-black transition-all active:scale-95 ${
                             orderTypeFilter === type 
                               ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/20' 
                               : 'bg-zinc-900/50 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-400'
                           }`}
                         >
-                          {type === 'PICKUP' ? '📦 PICKUP' : type === 'DELIVERY' ? '🚚 DELIVERY' : '🔍 ALL'}
+                          <span className="hidden sm:inline">{type === 'PICKUP' ? '📦 PICKUP' : type === 'DELIVERY' ? '🚚 DELIVERY' : '🔍 ALL'}</span>
+                          <span className="sm:hidden">{type === 'PICKUP' ? '📦' : type === 'DELIVERY' ? '🚚' : '🔍'}</span>
                         </button>
                       ))}
                     </div>
                   </div>
 
                   {/* STATUS & DATE - Secondary Filters */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-3 md:gap-4">
                     {/* Status Filter */}
                     <div>
-                      <span className="text-[10px] font-black text-zinc-600 uppercase tracking-wider mb-2 block">Status</span>
-                      <div className="flex flex-wrap gap-2">
+                      <span className="text-[9px] md:text-[10px] font-black text-zinc-600 uppercase tracking-wider mb-2 block">Status</span>
+                      <div className="flex flex-wrap gap-1.5 md:gap-2">
                         {['ALL', 'PENDING', 'PREPARING', 'READY', 'DONE'].map((status) => (
                           <button
                             key={status}
                             onClick={() => setFilterStatus(status)}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${
+                            className={`px-2.5 md:px-3 py-1.5 rounded-lg text-[9px] md:text-[10px] font-black transition-all active:scale-95 ${
                               filterStatus === status 
                                 ? 'bg-white text-black' 
                                 : 'bg-zinc-900/50 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400'
@@ -643,8 +644,8 @@ export default function Manager() {
 
                     {/* Date Filter */}
                     <div>
-                      <span className="text-[10px] font-black text-zinc-600 uppercase tracking-wider mb-2 block">Time Period</span>
-                      <div className="flex flex-wrap gap-2">
+                      <span className="text-[9px] md:text-[10px] font-black text-zinc-600 uppercase tracking-wider mb-2 block">Time Period</span>
+                      <div className="flex flex-wrap gap-1.5 md:gap-2">
                         {[
                           { id: '24H', label: '24H' },
                           { id: 'WEEK', label: 'WEEK' },
@@ -655,7 +656,7 @@ export default function Manager() {
                           <button
                             key={range.id}
                             onClick={() => setDateFilter(range.id)}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${
+                            className={`px-2.5 md:px-3 py-1.5 rounded-lg text-[9px] md:text-[10px] font-black transition-all active:scale-95 ${
                               dateFilter === range.id 
                                 ? 'bg-white text-black' 
                                 : 'bg-zinc-900/50 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400'
@@ -669,54 +670,54 @@ export default function Manager() {
                   </div>
                 </div>
 
-                {/* STATS */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-                  <div className="bg-zinc-950 border border-zinc-900 p-5 rounded-2xl flex items-center justify-between">
+                {/* STATS - Mobile Optimized */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                  <div className="bg-zinc-950 border border-zinc-900 p-4 md:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between">
                     <div>
-                      <p className="text-xs font-black text-zinc-500 uppercase mb-1">Filtered Revenue</p>
-                      <p className="text-2xl md:text-3xl font-black text-orange-500 italic">₦{totalRevenue.toLocaleString()}</p>
+                      <p className="text-[10px] md:text-xs font-black text-zinc-500 uppercase mb-1">Revenue</p>
+                      <p className="text-xl md:text-2xl lg:text-3xl font-black text-orange-500 italic">₦{(totalRevenue / 1000).toFixed(0)}K</p>
                     </div>
-                    <DollarSign className="text-zinc-800" size={36} />
+                    <DollarSign className="text-zinc-800 hidden md:block" size={36} />
                   </div>
-                  <div className="bg-zinc-950 border border-zinc-900 p-5 rounded-2xl flex items-center justify-between">
+                  <div className="bg-zinc-950 border border-zinc-900 p-4 md:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between">
                     <div>
-                      <p className="text-xs font-black text-zinc-500 uppercase mb-1">Orders Count</p>
-                      <p className="text-2xl md:text-3xl font-black text-white italic">{filteredOrders.length}</p>
+                      <p className="text-[10px] md:text-xs font-black text-zinc-500 uppercase mb-1">Orders</p>
+                      <p className="text-xl md:text-2xl lg:text-3xl font-black text-white italic">{filteredOrders.length}</p>
                     </div>
-                    <ShoppingBag className="text-zinc-800" size={36} />
+                    <ShoppingBag className="text-zinc-800 hidden md:block" size={36} />
                   </div>
                   <div 
-                    className="bg-zinc-950 border border-zinc-900 p-5 rounded-2xl flex items-center justify-between cursor-pointer hover:border-green-500/30 transition-all group"
+                    className="bg-zinc-950 border border-zinc-900 p-4 md:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between cursor-pointer hover:border-green-500/30 transition-all group active:scale-95"
                     onClick={() => setShowCategoryBreakdown(!showCategoryBreakdown)}
                   >
                     <div>
-                      <p className="text-xs font-black text-zinc-500 uppercase mb-1 group-hover:text-green-500 transition-colors">Stock Value</p>
-                      <p className="text-2xl md:text-3xl font-black text-green-500 italic">₦{totalStockValue.toLocaleString()}</p>
-                      <p className="text-[9px] text-zinc-600 font-bold mt-1 uppercase">Click for breakdown</p>
+                      <p className="text-[10px] md:text-xs font-black text-zinc-500 uppercase mb-1 group-hover:text-green-500 transition-colors">Stock</p>
+                      <p className="text-xl md:text-2xl lg:text-3xl font-black text-green-500 italic">₦{(totalStockValue / 1000).toFixed(0)}K</p>
+                      <p className="text-[8px] md:text-[9px] text-zinc-600 font-bold mt-1 uppercase">Tap for details</p>
                     </div>
-                    <PackagePlus className="text-zinc-800 group-hover:text-green-500/20 transition-colors" size={36} />
+                    <PackagePlus className="text-zinc-800 group-hover:text-green-500/20 transition-colors hidden md:block" size={36} />
                   </div>
-                  <div className="bg-zinc-950 border border-zinc-900 p-5 rounded-2xl flex items-center justify-between">
+                  <div className="bg-zinc-950 border border-zinc-900 p-4 md:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between">
                     <div>
-                      <p className="text-xs font-black text-zinc-500 uppercase mb-1">Total Items</p>
-                      <p className="text-2xl md:text-3xl font-black text-blue-500 italic">{totalStockItems}</p>
+                      <p className="text-[10px] md:text-xs font-black text-zinc-500 uppercase mb-1">Items</p>
+                      <p className="text-xl md:text-2xl lg:text-3xl font-black text-blue-500 italic">{totalStockItems}</p>
                     </div>
-                    <Package className="text-zinc-800" size={36} />
+                    <Package className="text-zinc-800 hidden md:block" size={36} />
                   </div>
                 </div>
 
-                {/* CATEGORY BREAKDOWN - EXPANDABLE */}
+                {/* CATEGORY BREAKDOWN - EXPANDABLE - Mobile Optimized */}
                 {showCategoryBreakdown && (
-                  <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-6 mb-6 animate-in slide-in-from-top-2 fade-in">
+                  <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 md:p-6 mb-6 animate-in slide-in-from-top-2 fade-in">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-black uppercase text-green-500 flex items-center gap-2">
-                        <PackagePlus size={16} /> Stock Value by Category
+                      <h3 className="text-xs md:text-sm font-black uppercase text-green-500 flex items-center gap-2">
+                        <PackagePlus size={14} className="md:w-4 md:h-4" /> Stock by Category
                       </h3>
                       <button 
                         onClick={() => setShowCategoryBreakdown(false)}
-                        className="text-zinc-600 hover:text-white transition-colors"
+                        className="text-zinc-600 hover:text-white transition-colors p-2 active:scale-95"
                       >
-                        <X size={16} />
+                        <X size={18} />
                       </button>
                     </div>
 
@@ -724,38 +725,38 @@ export default function Manager() {
                       {stockByCategory.map((cat, idx) => (
                         <div 
                           key={cat.name}
-                          className="bg-black/40 border border-zinc-900 p-4 rounded-xl hover:border-green-500/30 transition-all group"
+                          className="bg-black/40 border border-zinc-900 p-4 rounded-xl hover:border-green-500/30 transition-all active:scale-[0.98]"
                         >
                           <div className="flex items-start justify-between mb-3">
-                            <div>
-                              <p className="text-xs font-black uppercase text-white mb-1">{cat.name}</p>
-                              <p className="text-[9px] text-zinc-600 font-bold uppercase">{cat.productCount} Products</p>
+                            <div className="flex-1">
+                              <p className="text-xs md:text-sm font-black uppercase text-white mb-1 line-clamp-1">{cat.name}</p>
+                              <p className="text-[9px] md:text-[10px] text-zinc-600 font-bold uppercase">{cat.productCount} Product{cat.productCount !== 1 ? 's' : ''}</p>
                             </div>
-                            <div className="bg-green-500/10 px-2 py-1 rounded-lg">
-                              <p className="text-[9px] font-black text-green-500">#{idx + 1}</p>
+                            <div className="bg-green-500/10 px-2 py-1 rounded-lg flex-shrink-0 ml-2">
+                              <p className="text-[9px] md:text-[10px] font-black text-green-500">#{idx + 1}</p>
                             </div>
                           </div>
 
                           <div className="space-y-2">
                             <div className="flex justify-between items-center">
-                              <span className="text-[9px] text-zinc-500 font-bold uppercase">Stock Value</span>
-                              <span className="text-lg font-black text-green-500">₦{cat.totalValue.toLocaleString()}</span>
+                              <span className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase">Value</span>
+                              <span className="text-base md:text-lg font-black text-green-500">₦{cat.totalValue.toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between items-center pt-2 border-t border-zinc-900">
-                              <span className="text-[9px] text-zinc-500 font-bold uppercase">Items in Stock</span>
-                              <span className="text-sm font-black text-blue-500">{cat.totalItems}</span>
+                              <span className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase">Stock</span>
+                              <span className="text-sm md:text-base font-black text-blue-500">{cat.totalItems}</span>
                             </div>
                           </div>
 
                           {/* Progress bar showing percentage of total value */}
                           <div className="mt-3">
-                            <div className="h-1 bg-zinc-900 rounded-full overflow-hidden">
+                            <div className="h-1.5 md:h-1 bg-zinc-900 rounded-full overflow-hidden">
                               <div 
                                 className="h-full bg-gradient-to-r from-green-500 to-green-400 transition-all duration-500"
                                 style={{ width: `${totalStockValue > 0 ? (cat.totalValue / totalStockValue) * 100 : 0}%` }}
                               />
                             </div>
-                            <p className="text-[8px] text-zinc-600 font-bold mt-1 text-right">
+                            <p className="text-[8px] md:text-[9px] text-zinc-600 font-bold mt-1 text-right">
                               {totalStockValue > 0 ? ((cat.totalValue / totalStockValue) * 100).toFixed(1) : 0}% of total
                             </p>
                           </div>
@@ -764,7 +765,8 @@ export default function Manager() {
                     </div>
 
                     {stockByCategory.length === 0 && (
-                      <div className="text-center py-8">
+                      <div className="text-center py-8 md:py-12">
+                        <PackagePlus size={40} className="text-zinc-800 mx-auto mb-3" />
                         <p className="text-zinc-600 text-xs font-bold uppercase">No categories with stock</p>
                       </div>
                     )}

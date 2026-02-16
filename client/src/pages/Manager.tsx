@@ -44,6 +44,10 @@ export default function Manager() {
   const [deliveryFeePerKm, setDeliveryFeePerKm] = useState('150');
   const [isSavingFee, setIsSavingFee] = useState(false);
 
+  // ✅ NEW: Edit Modal State
+  const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+
   // --- 2. ANALYTICS ---
   const filteredOrders = orders.filter(order => {
     const matchesStatus = filterStatus === 'ALL' || order.status === filterStatus;
@@ -101,6 +105,7 @@ export default function Manager() {
 
   // --- 3. DATA FETCH ---
   const fetchManagerData = async () => {
+    console.log("🔄 Fetching manager data...");
     setLoading(true);
     try {
       const { data: oData } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
@@ -113,14 +118,18 @@ export default function Manager() {
       if (cData) setCategories(cData);
 
       const { data: pData } = await supabase.from('products').select('*').order('created_at', { ascending: false });
-      if (pData) setProducts(pData);
+      if (pData) {
+        console.log("✅ Products fetched:", pData.length);
+        setProducts(pData);
+      }
 
       const { data: sData } = await supabase.from('store_settings').select('delivery_fee_per_km').eq('id', 1).single();
       if (sData) setDeliveryFeePerKm(String(sData.delivery_fee_per_km || 150));
     } catch (err) {
-      console.error("Sync Error:", err);
+      console.error("❌ Sync Error:", err);
     } finally {
       setLoading(false);
+      console.log("✅ Manager data fetch complete");
     }
   };
 
@@ -283,6 +292,119 @@ export default function Manager() {
       setNewProduct({ name: '', price: '', image_url: '', category: '', stock: '10' });
       alert("Product added successfully!");
       fetchManagerData();
+    }
+  };
+
+  // ✅ FIXED: Open Edit Modal with product data
+  const openEditModal = (product: any) => {
+    setEditingProduct({
+      id: product.id,
+      name: product.name,
+      price: String(product.price),
+      stock: String(product.stock || 0),
+      category: product.category,
+      image_url: product.image || product.image_url || ''
+    });
+    setShowEditModal(true);
+  };
+
+  // ✅ FIXED: Handle Edit Form Changes with proper spread operator
+  const handleEditChange = (field: string, value: string) => {
+    setEditingProduct((prev: any) => ({
+      ...prev,  // ✅ Preserve all existing fields
+      [field]: value
+    }));
+  };
+
+  // ✅ FIXED: Save edited product with proper type conversion
+  const handleSaveEdit = async () => {
+    if (!editingProduct) return;
+
+    // Validate inputs
+    if (!editingProduct.name || !editingProduct.price || !editingProduct.category) {
+      alert("Please fill in all required fields (Name, Price, Category)");
+      return;
+    }
+
+    const priceValue = parseFloat(editingProduct.price);
+    const stockValue = parseInt(editingProduct.stock);
+
+    if (isNaN(priceValue) || priceValue < 0) {
+      alert("Please enter a valid price");
+      return;
+    }
+
+    if (isNaN(stockValue) || stockValue < 0) {
+      alert("Please enter a valid stock quantity");
+      return;
+    }
+
+    console.log("🔄 Updating product:", {
+      id: editingProduct.id,
+      name: editingProduct.name,
+      price: priceValue,
+      stock: stockValue,
+      category: editingProduct.category
+    });
+
+    try {
+      // First, verify the product exists
+      const { data: existingProduct, error: checkError } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', editingProduct.id)
+        .single();
+
+      if (checkError || !existingProduct) {
+        console.error("❌ Product not found:", checkError);
+        alert("Error: Product not found in database");
+        return;
+      }
+
+      console.log("✅ Product exists:", existingProduct);
+
+      // Now update it
+      const { data, error } = await supabase
+        .from('products')
+        .update({
+          name: editingProduct.name.toUpperCase(),
+          price: priceValue,
+          stock: stockValue,
+          category: editingProduct.category,
+          image: editingProduct.image_url
+        })
+        .eq('id', editingProduct.id)
+        .select()
+        .single(); // ✅ Return updated data
+
+      if (error) {
+        console.error("❌ Update Error:", error);
+        alert("Update failed: " + error.message + "\n\nCheck console for details.");
+        return;
+      }
+
+      console.log("✅ Update successful, returned data:", data);
+
+      // ✅ Immediately update local state for instant UI feedback
+      setProducts(prevProducts => 
+        prevProducts.map(p => 
+          p.id === editingProduct.id 
+            ? { ...p, name: editingProduct.name.toUpperCase(), price: priceValue, stock: stockValue, category: editingProduct.category, image: editingProduct.image_url }
+            : p
+        )
+      );
+
+      alert("✅ Product updated successfully!");
+      setShowEditModal(false);
+      setEditingProduct(null);
+
+      // Fetch fresh data from database
+      console.log("🔄 Fetching fresh data...");
+      await fetchManagerData();
+
+    } catch (err) {
+      console.error("❌ Unexpected error:", err);
+      alert("An unexpected error occurred. Please check console and try again.");
     }
   };
 
@@ -1075,15 +1197,14 @@ export default function Manager() {
                           <div className="flex justify-between items-center mb-1">
                             <p className="text-[9px] text-orange-500 font-bold">₦{p.price.toLocaleString()}</p>
                           </div>
+
+                          {/* ✅ REPLACED: Quick action buttons now include full edit */}
                           <div className="flex gap-1.5 justify-between">
                             <button 
-                              onClick={() => updateStock(p.id)} 
-                              className="flex-1 bg-zinc-800 hover:bg-blue-600 text-white px-2 py-1 rounded text-[8px] font-black uppercase transition-colors"
+                              onClick={() => openEditModal(p)}
+                              className="flex-1 bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-[8px] font-black uppercase transition-colors"
                             >
-                              Stock
-                            </button>
-                            <button onClick={() => updatePrice(p.id)} className="text-zinc-600 hover:text-white transition-colors">
-                              <Edit3 size={10}/>
+                              EDIT
                             </button>
                             <button onClick={() => deleteProduct(p.id)} className="text-zinc-600 hover:text-red-500 transition-colors">
                               <Trash2 size={10} />
@@ -1143,6 +1264,143 @@ export default function Manager() {
                 className="w-full bg-orange-600 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-orange-500 transition-colors mt-2"
               >
                 Add to Inventory
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ NEW: EDIT PRODUCT MODAL - Full form with working stock input */}
+      {showEditModal && editingProduct && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/95 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-zinc-950 border border-zinc-800 w-full max-w-md max-h-[90vh] sm:max-h-[85vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300">
+
+            {/* Header - FIXED/STICKY */}
+            <div className="flex-shrink-0 p-4 sm:p-6 border-b border-zinc-800 bg-zinc-900/50">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs sm:text-sm font-black uppercase text-white flex items-center gap-2">
+                  <Edit3 size={14} className="text-orange-500 sm:w-4 sm:h-4" /> Edit Product
+                </h3>
+                <button 
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingProduct(null);
+                  }}
+                  className="text-zinc-500 hover:text-white transition-colors p-1 active:scale-95"
+                >
+                  <X size={18} className="sm:w-5 sm:h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Form - SCROLLABLE */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4 custom-scrollbar">
+              {/* Product Name */}
+              <div>
+                <label className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 sm:mb-2 block">
+                  Product Name
+                </label>
+                <input 
+                  type="text"
+                  value={editingProduct.name}
+                  onChange={(e) => handleEditChange('name', e.target.value)}
+                  className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 sm:py-2.5 text-xs font-black uppercase outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all"
+                  placeholder="PRODUCT NAME"
+                />
+              </div>
+
+              {/* Price and Stock - Grid on larger screens */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Price */}
+                <div>
+                  <label className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 sm:mb-2 block">
+                    Price (₦)
+                  </label>
+                  <input 
+                    type="number"
+                    value={editingProduct.price}
+                    onChange={(e) => handleEditChange('price', e.target.value)}
+                    className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 sm:py-2.5 text-xs font-black uppercase outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all"
+                    placeholder="0"
+                  />
+                </div>
+
+                {/* ✅ STOCK INPUT - Now with proper onChange handler */}
+                <div>
+                  <label className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 sm:mb-2 block">
+                    Stock Qty
+                  </label>
+                  <input 
+                    type="number"
+                    value={editingProduct.stock}
+                    onChange={(e) => handleEditChange('stock', e.target.value)}  
+                    className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 sm:py-2.5 text-xs font-black uppercase outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 sm:mb-2 block">
+                  Category
+                </label>
+                <select 
+                  value={editingProduct.category}
+                  onChange={(e) => handleEditChange('category', e.target.value)}
+                  className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 sm:py-2.5 text-xs font-black uppercase outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all appearance-none cursor-pointer"
+                >
+                  <option value="">SELECT CATEGORY</option>
+                  {categories.map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Image Preview */}
+              {editingProduct.image_url && (
+                <div>
+                  <label className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 sm:mb-2 block">
+                    Current Image
+                  </label>
+                  <div className="relative group/preview">
+                    <img 
+                      src={editingProduct.image_url} 
+                      alt="Product" 
+                      className="w-full h-40 sm:h-48 object-cover rounded-lg border border-zinc-800"
+                      onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400?text=No+Image'; }}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover/preview:opacity-100 transition-opacity rounded-lg flex items-end p-3">
+                      <p className="text-[8px] sm:text-[9px] text-zinc-400 font-bold uppercase">Product Image Preview</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Info Card */}
+              <div className="bg-orange-500/5 border border-orange-500/20 rounded-lg p-3">
+                <p className="text-[9px] sm:text-[10px] text-orange-500/80 font-bold uppercase tracking-wider text-center">
+                  💡 Changes will be saved to database
+                </p>
+              </div>
+            </div>
+
+            {/* Footer Actions - FIXED/STICKY */}
+            <div className="flex-shrink-0 p-4 sm:p-6 border-t border-zinc-800 bg-zinc-900/50 flex flex-col sm:flex-row gap-2 sm:gap-3">
+              <button 
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingProduct(null);
+                }}
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-white py-2.5 sm:py-3 rounded-lg text-xs font-black uppercase transition-all"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSaveEdit}
+                className="flex-1 bg-orange-600 hover:bg-orange-500 active:scale-95 text-white py-2.5 sm:py-3 rounded-lg text-xs font-black uppercase transition-all shadow-lg shadow-orange-500/20"
+              >
+                💾 Save Changes
               </button>
             </div>
           </div>

@@ -2,11 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { 
   Trash2, LayoutDashboard, PlusCircle, 
-  Save, Clock, MapPin, Calendar, PackagePlus, Edit3, DollarSign, ShoppingBag, AlertTriangle, Download, Upload, ChevronDown, ChevronUp, X
+  Save, Clock, MapPin, Calendar, PackagePlus, Edit3, DollarSign, ShoppingBag, AlertTriangle, Download, Upload, ChevronUp, X
 } from 'lucide-react';
+import SettingsTab from '../components/SettingsTab';
 
 export default function Manager() {
+  // --- 0. AUTHENTICATION STATE ---
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
   // --- 1. STATE ---
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'settings'>('dashboard');
   const [orders, setOrders] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -74,15 +82,81 @@ export default function Manager() {
     }
   };
 
+  // --- CHECK AUTHENTICATION ON MOUNT ---
   useEffect(() => {
-    fetchManagerData();
-    const channel = supabase.channel('manager-stable-view')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchManagerData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchManagerData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchManagerData)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const session = localStorage.getItem('manager_session');
+    const sessionTime = localStorage.getItem('manager_session_time');
+
+    if (session && sessionTime) {
+      const now = new Date().getTime();
+      const sessionAge = now - parseInt(sessionTime);
+
+      // Session expires after 24 hours
+      if (sessionAge < 24 * 60 * 60 * 1000) {
+        setIsAuthenticated(true);
+      } else {
+        localStorage.removeItem('manager_session');
+        localStorage.removeItem('manager_session_time');
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchManagerData();
+      const channel = supabase.channel('manager-stable-view')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchManagerData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchManagerData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchManagerData)
+        .subscribe();
+      return () => { supabase.removeChannel(channel); };
+    }
+  }, [isAuthenticated]);
+
+  // --- AUTHENTICATION HANDLERS ---
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoggingIn(true);
+    setLoginError('');
+
+    try {
+      // Fetch password from database
+      const { data: settingsData } = await supabase
+        .from('store_settings')
+        .select('manager_password')
+        .eq('id', 1)
+        .single();
+
+      const dbPassword = settingsData?.manager_password;
+      const masterKey = import.meta.env.VITE_MASTER_RECOVERY_KEY;
+
+      setTimeout(() => {
+        // Check database password OR master key
+        if (passwordInput === dbPassword || passwordInput === masterKey) {
+          localStorage.setItem('manager_session', 'authenticated');
+          localStorage.setItem('manager_session_time', new Date().getTime().toString());
+          setIsAuthenticated(true);
+          setPasswordInput('');
+        } else {
+          setLoginError('Incorrect password. Please try again.');
+          setPasswordInput('');
+        }
+        setIsLoggingIn(false);
+      }, 500);
+    } catch (error) {
+      console.error('Login error:', error);
+      setLoginError('Login failed. Please try again.');
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = () => {
+    if (confirm('Are you sure you want to logout?')) {
+      localStorage.removeItem('manager_session');
+      localStorage.removeItem('manager_session_time');
+      setIsAuthenticated(false);
+    }
+  };
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -202,8 +276,8 @@ export default function Manager() {
   };
 
   const exportCSV = () => {
-    const headers = "Date,Customer,Items,Total,Address\n";
-    const rows = orders.map(o => `${o.created_at},${o.customer_name},"${o.items}",${o.total_price},"${o.address}"`).join("\n");
+    const headers = "Date,Customer,Phone,Items,Total,Address\n";
+    const rows = orders.map(o => `${o.created_at},${o.customer_name},"${o.phone_number || 'N/A'}","${o.items}",${o.total_price},"${o.address}"`).join("\n");
     const blob = new Blob([headers + rows], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -242,6 +316,88 @@ export default function Manager() {
       day: d.toLocaleDateString([], { month: 'short', day: 'numeric' })
     };
   };
+
+  // --- LOGIN SCREEN ---
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-6 relative overflow-hidden">
+        {/* Background Effects */}
+        <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 via-transparent to-transparent pointer-events-none" />
+        <div className="absolute top-20 left-20 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-20 right-20 w-96 h-96 bg-orange-500/5 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="bg-zinc-950/80 backdrop-blur-xl border border-zinc-800 p-12 rounded-3xl shadow-2xl max-w-md w-full relative z-10 animate-in fade-in zoom-in duration-500">
+          {/* Logo/Icon */}
+          <div className="flex justify-center mb-8">
+            <div className="bg-orange-500/10 p-4 rounded-2xl">
+              <LayoutDashboard className="text-orange-500" size={40} />
+            </div>
+          </div>
+
+          {/* Title */}
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-black italic uppercase tracking-tighter text-white mb-2">
+              Manager Access
+            </h1>
+            <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">
+              Authorized Personnel Only
+            </p>
+          </div>
+
+          {/* Login Form */}
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <label className="text-xs font-black text-zinc-500 uppercase tracking-wider mb-2 block">
+                Password
+              </label>
+              <input
+                type="password"
+                value={passwordInput}
+                onChange={(e) => {
+                  setPasswordInput(e.target.value);
+                  setLoginError('');
+                }}
+                placeholder="Enter manager password"
+                className="w-full bg-black/50 backdrop-blur-sm border border-zinc-800 rounded-xl px-4 py-4 text-sm font-medium text-white placeholder:text-zinc-600 outline-none focus:border-orange-500 transition-all"
+                disabled={isLoggingIn}
+                autoFocus
+              />
+            </div>
+
+            {/* Error Message */}
+            {loginError && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 animate-in fade-in slide-in-from-top-2">
+                <p className="text-red-500 text-xs font-bold text-center">{loginError}</p>
+              </div>
+            )}
+
+            {/* Login Button */}
+            <button
+              type="submit"
+              disabled={!passwordInput || isLoggingIn}
+              className="w-full bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 disabled:cursor-not-allowed text-white py-4 rounded-xl font-black uppercase text-sm tracking-widest transition-all active:scale-95 disabled:active:scale-100 shadow-lg shadow-orange-500/20 disabled:shadow-none"
+            >
+              {isLoggingIn ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                  <span>Verifying...</span>
+                </div>
+              ) : (
+                'Access Dashboard'
+              )}
+            </button>
+          </form>
+
+          {/* Footer Note */}
+          <div className="mt-8 pt-6 border-t border-zinc-800">
+            <p className="text-center text-zinc-600 text-[9px] font-medium uppercase tracking-widest">
+              Secure Manager Portal
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -294,229 +450,303 @@ export default function Manager() {
                 <button onClick={exportCSV} className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-xl text-xs font-black uppercase hover:bg-white hover:text-black transition-all">
                   <Download size={12} /> Export CSV
                 </button>
+
+                {/* LOGOUT BUTTON */}
+                <button 
+                  onClick={handleLogout} 
+                  className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-xl text-xs font-black uppercase hover:bg-red-600 hover:border-red-600 hover:text-white transition-all"
+                >
+                  <X size={12} /> Logout
+                </button>
               </div>
             </div>
 
-            {/* FILTERS */}
-            <div className="space-y-3 mb-6">
-              <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
-                {['ALL', 'PENDING', 'PREPARING', 'READY', 'DONE'].map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => setFilterStatus(status)}
-                    className={`px-4 py-2 rounded-full text-xs font-black transition-all whitespace-nowrap ${
-                      filterStatus === status 
-                        ? 'bg-orange-500 text-black' 
-                        : 'bg-zinc-900 text-zinc-500 hover:bg-zinc-800'
-                    }`}
-                  >
-                    {status}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar border-t border-zinc-800/30 pt-3">
-                {[
-                  { id: '24H', label: 'LAST 24 HOURS' },
-                  { id: 'WEEK', label: 'LAST WEEK' },
-                  { id: 'MONTH', label: 'LAST MONTH' },
-                  { id: 'YEAR', label: 'LAST YEAR' },
-                  { id: 'ALL_TIME', label: 'ALL TIME' }
-                ].map((range) => (
-                  <button
-                    key={range.id}
-                    onClick={() => setDateFilter(range.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
-                      dateFilter === range.id 
-                        ? 'bg-white text-black' 
-                        : 'bg-zinc-900/50 text-zinc-600 hover:text-zinc-400'
-                    }`}
-                  >
-                    {range.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* STATS */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="bg-zinc-950 border border-zinc-900 p-5 rounded-2xl flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-black text-zinc-500 uppercase mb-1">Filtered Revenue</p>
-                  <p className="text-2xl md:text-3xl font-black text-orange-500 italic">₦{totalRevenue.toLocaleString()}</p>
-                </div>
-                <DollarSign className="text-zinc-800" size={36} />
-              </div>
-              <div className="bg-zinc-950 border border-zinc-900 p-5 rounded-2xl flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-black text-zinc-500 uppercase mb-1">Orders Count</p>
-                  <p className="text-2xl md:text-3xl font-black text-white italic">{filteredOrders.length}</p>
-                </div>
-                <ShoppingBag className="text-zinc-800" size={36} />
-              </div>
-            </div>
-          </header>
-
-          {/* MAIN CONTENT GRID */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* LEFT SIDEBAR */}
-            <div className="lg:col-span-1 space-y-6">
-              {/* CATEGORIES */}
-              <section className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl">
-                <h2 className="text-xs font-black uppercase text-orange-500 mb-4 flex items-center gap-2">
-                  <PlusCircle size={12}/> Categories
-                </h2>
-                <div className="flex gap-2 mb-4">
-                  <input 
-                    value={newCategoryName} 
-                    onChange={(e) => setNewCategoryName(e.target.value)} 
-                    placeholder="NAME..." 
-                    className="flex-1 bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs font-black uppercase outline-none focus:border-orange-500" 
-                  />
-                  <button onClick={handleAddCategory} className="bg-white text-black p-2 rounded-xl">
-                    <Save size={16} />
-                  </button>
-                </div>
-                <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
-                  {categories.map(c => (
-                    <div key={c.id} className="flex justify-between items-center bg-black/40 border border-zinc-900 px-3 py-2 rounded-xl">
-                      <span className="text-xs font-black uppercase">{c.name}</span>
-                      <button onClick={() => deleteCategory(c.id)} className="text-zinc-800 hover:text-red-500">
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              {/* MESSAGES */}
-              {msgs.map((m: any) => (
-                <div key={m.id} className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl group relative">
-                  <button 
-                    onClick={async () => {
-                      if(confirm("Delete this message?")) {
-                        await supabase.from('messages').delete().eq('id', m.id);
-                        fetchManagerData();
-                      }
-                    }}
-                    className="absolute top-4 right-4 text-zinc-700 hover:text-red-500 transition-colors"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-
-                  <div className="flex justify-between items-start mb-3">
-                    <span className="text-xs font-black text-white bg-zinc-900 px-3 py-1 rounded-full uppercase italic">
-                      {m.name}
-                    </span>
-                    <span className="text-zinc-600 text-xs font-bold mr-6">
-                      {new Date(m.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-zinc-500 mb-3 font-bold lowercase tracking-tight">
-                    {m.email}
-                  </p>
-
-                  <div className="bg-black p-3 rounded-xl border border-zinc-900 group-hover:border-orange-500/30 transition-colors">
-                    <p className="text-xs text-zinc-300 leading-relaxed italic font-medium">
-                      "{m.message}"
-                    </p>
-                  </div>
-
-                  <a 
-                    href={`mailto:${m.email}?subject=Grandpa's Supermart Support`}
-                    className="mt-3 inline-block text-xs font-black uppercase text-orange-500 hover:text-orange-400"
-                  >
-                    Reply to {m.name} →
-                  </a>
-                </div>
-              ))}
-
-              {/* INVENTORY TOGGLE */}
-              <button 
-                onClick={() => setShowInventory(!showInventory)}
-                className="w-full py-3 bg-zinc-900/50 border border-zinc-800 rounded-2xl flex items-center justify-center gap-3 hover:bg-orange-600/10 hover:border-orange-500/50 transition-all group"
+            {/* TAB NAVIGATION */}
+            <div className="flex gap-2 mb-6 border-b border-zinc-900">
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`px-6 py-3 rounded-t-xl text-sm font-black uppercase transition-all ${
+                  activeTab === 'dashboard'
+                    ? 'bg-zinc-950 border border-b-0 border-zinc-900 text-white'
+                    : 'text-zinc-600 hover:text-zinc-400'
+                }`}
               >
-                <div className={`p-1 rounded-full transition-colors ${showInventory ? 'bg-orange-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>
-                  {showInventory ? <ChevronUp size={14} /> : <PackagePlus size={14} />}
-                </div>
-                <span className="text-[10px] font-black uppercase tracking-[0.15em]">
-                  {showInventory ? "Hide Inventory" : "Manage Inventory"}
-                </span>
+                📊 Dashboard
+              </button>
+              <button
+                onClick={() => setActiveTab('settings')}
+                className={`px-6 py-3 rounded-t-xl text-sm font-black uppercase transition-all ${
+                  activeTab === 'settings'
+                    ? 'bg-zinc-950 border border-b-0 border-zinc-900 text-white'
+                    : 'text-zinc-600 hover:text-zinc-400'
+                }`}
+              >
+                ⚙️ Settings
               </button>
             </div>
 
-            {/* RIGHT CONTENT - ORDERS */}
-            <div className="lg:col-span-2">
-              <section className="bg-zinc-950 border border-zinc-900 rounded-2xl overflow-hidden">
-                <div className="p-6 border-b border-zinc-900 bg-zinc-900/20">
-                  <h2 className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
-                    <Clock size={12} className="text-orange-500"/> Recent Sales
-                  </h2>
+            {/* CONDITIONAL CONTENT */}
+            {activeTab === 'settings' ? (
+              <SettingsTab onSettingsSaved={fetchManagerData} />
+            ) : (
+              <>
+                {/* FILTERS */}
+                <div className="space-y-3 mb-6">
+                  <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                    {['ALL', 'PENDING', 'PREPARING', 'READY', 'DONE'].map((status) => (
+                      <button
+                        key={status}
+                        onClick={() => setFilterStatus(status)}
+                        className={`px-4 py-2 rounded-full text-xs font-black transition-all whitespace-nowrap ${
+                          filterStatus === status 
+                            ? 'bg-orange-500 text-black' 
+                            : 'bg-zinc-900 text-zinc-500 hover:bg-zinc-800'
+                        }`}
+                      >
+                        {status}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar border-t border-zinc-800/30 pt-3">
+                    {[
+                      { id: '24H', label: 'LAST 24 HOURS' },
+                      { id: 'WEEK', label: 'LAST WEEK' },
+                      { id: 'MONTH', label: 'LAST MONTH' },
+                      { id: 'YEAR', label: 'LAST YEAR' },
+                      { id: 'ALL_TIME', label: 'ALL TIME' }
+                    ].map((range) => (
+                      <button
+                        key={range.id}
+                        onClick={() => setDateFilter(range.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                          dateFilter === range.id 
+                            ? 'bg-white text-black' 
+                            : 'bg-zinc-900/50 text-zinc-600 hover:text-zinc-400'
+                        }`}
+                      >
+                        {range.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="divide-y divide-zinc-900 max-h-[600px] overflow-y-auto custom-scrollbar">
-                  {filteredOrders.length === 0 ? (
-                    <div className="p-20 text-center opacity-20">
-                      <p className="text-xs font-black uppercase tracking-widest">No orders found</p>
+
+                {/* STATS */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="bg-zinc-950 border border-zinc-900 p-5 rounded-2xl flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-black text-zinc-500 uppercase mb-1">Filtered Revenue</p>
+                      <p className="text-2xl md:text-3xl font-black text-orange-500 italic">₦{totalRevenue.toLocaleString()}</p>
                     </div>
-                  ) : (
-                    filteredOrders.map(order => {
-                      const time = formatTime(order.created_at);
-                      return (
-                        <div key={order.id} className="p-5 hover:bg-white/5 transition-colors group">
-                          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-3">
-                            <div className="flex items-center gap-3">
-                              <div className="bg-black border border-zinc-800 px-2 py-1 rounded-lg">
-                                <p className="text-xs font-black uppercase tracking-tighter">#{order.id}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs font-black italic uppercase">{order.customer_name}</p>
-                                <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase mt-1">
-                                  <Calendar size={9}/> {time.day} <Clock size={9}/> {time.t}
+                    <DollarSign className="text-zinc-800" size={36} />
+                  </div>
+                  <div className="bg-zinc-950 border border-zinc-900 p-5 rounded-2xl flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-black text-zinc-500 uppercase mb-1">Orders Count</p>
+                      <p className="text-2xl md:text-3xl font-black text-white italic">{filteredOrders.length}</p>
+                    </div>
+                    <ShoppingBag className="text-zinc-800" size={36} />
+                  </div>
+                </div>
+              </>
+            )}
+          </header>
+
+          {/* MAIN CONTENT - Only show if Dashboard tab is active */}
+          {activeTab === 'dashboard' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* LEFT SIDEBAR */}
+              <div className="lg:col-span-1 space-y-6">
+                {/* CATEGORIES */}
+                <section className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl">
+                  <h2 className="text-xs font-black uppercase text-orange-500 mb-4 flex items-center gap-2">
+                    <PlusCircle size={12}/> Categories
+                  </h2>
+                  <div className="flex gap-2 mb-4">
+                    <input 
+                      value={newCategoryName} 
+                      onChange={(e) => setNewCategoryName(e.target.value)} 
+                      placeholder="NAME..." 
+                      className="flex-1 bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs font-black uppercase outline-none focus:border-orange-500" 
+                    />
+                    <button onClick={handleAddCategory} className="bg-white text-black p-2 rounded-xl">
+                      <Save size={16} />
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+                    {categories.map(c => (
+                      <div key={c.id} className="flex justify-between items-center bg-black/40 border border-zinc-900 px-3 py-2 rounded-xl">
+                        <span className="text-xs font-black uppercase">{c.name}</span>
+                        <button onClick={() => deleteCategory(c.id)} className="text-zinc-800 hover:text-red-500">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* MESSAGES */}
+                {msgs.map((m: any) => (
+                  <div key={m.id} className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl group relative">
+                    <button 
+                      onClick={async () => {
+                        if(confirm("Delete this message?")) {
+                          await supabase.from('messages').delete().eq('id', m.id);
+                          fetchManagerData();
+                        }
+                      }}
+                      className="absolute top-4 right-4 text-zinc-700 hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+
+                    <div className="flex justify-between items-start mb-3">
+                      <span className="text-xs font-black text-white bg-zinc-900 px-3 py-1 rounded-full uppercase italic">
+                        {m.name}
+                      </span>
+                      <span className="text-zinc-600 text-xs font-bold mr-6">
+                        {new Date(m.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-zinc-500 mb-3 font-bold lowercase tracking-tight">
+                      {m.email}
+                    </p>
+
+                    <div className="bg-black p-3 rounded-xl border border-zinc-900 group-hover:border-orange-500/30 transition-colors">
+                      <p className="text-xs text-zinc-300 leading-relaxed italic font-medium">
+                        "{m.message}"
+                      </p>
+                    </div>
+
+                    <a 
+                      href={`mailto:${m.email}?subject=Grandpa's Supermart Support`}
+                      className="mt-3 inline-block text-xs font-black uppercase text-orange-500 hover:text-orange-400"
+                    >
+                      Reply to {m.name} →
+                    </a>
+                  </div>
+                ))}
+
+                {/* INVENTORY TOGGLE */}
+                <button 
+                  onClick={() => setShowInventory(!showInventory)}
+                  className="w-full py-3 bg-zinc-900/50 border border-zinc-800 rounded-2xl flex items-center justify-center gap-3 hover:bg-orange-600/10 hover:border-orange-500/50 transition-all group"
+                >
+                  <div className={`p-1 rounded-full transition-colors ${showInventory ? 'bg-orange-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>
+                    {showInventory ? <ChevronUp size={14} /> : <PackagePlus size={14} />}
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-[0.15em]">
+                    {showInventory ? "Hide Inventory" : "Manage Inventory"}
+                  </span>
+                </button>
+              </div>
+
+              {/* RIGHT CONTENT - ORDERS */}
+              <div className="lg:col-span-2">
+                <section className="bg-zinc-950 border border-zinc-900 rounded-2xl overflow-hidden">
+                  <div className="p-6 border-b border-zinc-900 bg-zinc-900/20">
+                    <h2 className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
+                      <Clock size={12} className="text-orange-500"/> Recent Sales
+                    </h2>
+                  </div>
+                  <div className="divide-y divide-zinc-900 max-h-[600px] overflow-y-auto custom-scrollbar">
+                    {filteredOrders.length === 0 ? (
+                      <div className="p-20 text-center opacity-20">
+                        <p className="text-xs font-black uppercase tracking-widest">No orders found</p>
+                      </div>
+                    ) : (
+                      filteredOrders.map(order => {
+                        const time = formatTime(order.created_at);
+                        return (
+                          <div key={order.id} className="p-5 hover:bg-white/5 transition-colors group">
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-3">
+                              <div className="flex items-center gap-3">
+                                <div className="bg-black border border-zinc-800 px-2 py-1 rounded-lg">
+                                  <p className="text-xs font-black uppercase tracking-tighter">#{order.id}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs font-black italic uppercase">{order.customer_name}</p>
+                                  <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase mt-1">
+                                    <Calendar size={9}/> {time.day} <Clock size={9}/> {time.t}
+                                  </div>
+                                  {order.phone_number && (
+                                    <p className="text-xs text-green-500 font-bold mt-1">📞 {order.phone_number}</p>
+                                  )}
                                 </div>
                               </div>
+                              <select 
+                                value={order.status} 
+                                onChange={(e) => updateStatus(order.id, e.target.value)}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase border-none outline-none ${
+                                  order.status === 'DONE' ? 'bg-green-600/20 text-green-500' :
+                                  order.status === 'READY' ? 'bg-blue-600/20 text-blue-500' :
+                                  order.status === 'PENDING' ? 'bg-orange-600/20 text-orange-500' :
+                                  'bg-zinc-800 text-zinc-400'
+                                }`}
+                              >
+                                <option value="PENDING">PENDING</option>
+                                <option value="PREPARING">PREPARING</option>
+                                <option value="READY">READY</option>
+                                <option value="DONE">DONE</option>
+                              </select>
                             </div>
-                            <select 
-                              value={order.status} 
-                              onChange={(e) => updateStatus(order.id, e.target.value)}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase border-none outline-none ${
-                                order.status === 'DONE' ? 'bg-green-600/20 text-green-500' :
-                                order.status === 'READY' ? 'bg-blue-600/20 text-blue-500' :
-                                order.status === 'PENDING' ? 'bg-orange-600/20 text-orange-500' :
-                                'bg-zinc-800 text-zinc-400'
-                              }`}
-                            >
-                              <option value="PENDING">PENDING</option>
-                              <option value="PREPARING">PREPARING</option>
-                              <option value="READY">READY</option>
-                              <option value="DONE">DONE</option>
-                            </select>
-                          </div>
-                          <div className="bg-black/40 border border-zinc-900 p-4 rounded-xl mb-3">
-                            <p className="text-xs font-black uppercase tracking-widest text-zinc-600 mb-2 italic">Items Summary</p>
-                            <p className="text-xs font-medium leading-relaxed">{order.items}</p>
-                            <div className="mt-3 flex justify-between items-center border-t border-zinc-900/50 pt-3">
-                              <p className="text-xs font-black uppercase">Total Paid</p>
-                              <p className="text-lg font-black italic text-orange-500">₦{order.total_price?.toLocaleString()}</p>
-                            </div>
-                          </div>
-                          {showAddresses && order.address && (
-                            <div className="flex items-start gap-2 p-3 bg-orange-500/5 border border-orange-500/10 rounded-xl">
-                              <MapPin size={12} className="text-orange-500 shrink-0 mt-0.5" />
-                              <div>
-                                <p className="text-xs font-black text-orange-500 uppercase tracking-widest mb-1">Destination</p>
-                                <p className="text-xs font-bold italic leading-tight">{order.address}</p>
+                            <div className="bg-black/40 border border-zinc-900 p-4 rounded-xl mb-3">
+                              <p className="text-xs font-black uppercase tracking-widest text-zinc-600 mb-2 italic">Items Summary</p>
+                              <p className="text-xs font-medium leading-relaxed">{order.items}</p>
+                              <div className="mt-3 flex justify-between items-center border-t border-zinc-900/50 pt-3">
+                                <p className="text-xs font-black uppercase">Total Paid</p>
+                                <p className="text-lg font-black italic text-orange-500">₦{order.total_price?.toLocaleString()}</p>
                               </div>
                             </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </section>
+                            {showAddresses && order.address !== "PICK-UP ONLY" && (
+                                  <div className="mt-3 space-y-2">
+                                    <div className="flex items-start gap-2 p-3 bg-orange-500/5 border border-orange-500/10 rounded-xl">
+                                      <MapPin size={12} className="text-orange-500 shrink-0 mt-0.5" />
+                                      <div>
+                                        <p className="text-xs font-black text-orange-500 uppercase tracking-widest mb-1">Delivery</p>
+                                        <p className="text-xs font-bold italic leading-tight">{order.address}</p>
+                                        {order.payment_method && (
+                                          <p className="text-xs text-zinc-500 mt-1">
+                                            Payment: {order.payment_method === 'cash' ? '💵 Cash' : '📱 Transfer'} on delivery
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {order.delivery_fee > 0 && (
+                                      <div className="bg-green-500/10 border border-green-500/30 p-3 rounded-xl">
+                                        <div className="flex justify-between items-center">
+                                          <div>
+                                            <p className="text-xs font-black text-green-400 uppercase">Delivery Fee Collected</p>
+                                            <p className="text-xs text-zinc-500 mt-1">{order.delivery_distance}km traveled</p>
+                                          </div>
+                                          <div className="text-right">
+                                            <p className="text-sm font-black text-green-500">₦{order.delivery_fee.toLocaleString()}</p>
+                                            <p className="text-xs text-zinc-500">Final: ₦{(order.final_total || order.total_price).toLocaleString()}</p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {order.delivery_fee === 0 && order.status !== 'DONE' && (
+                                      <div className="bg-yellow-500/10 border border-yellow-500/30 p-2 rounded-lg">
+                                        <p className="text-xs text-yellow-500 font-bold text-center">
+                                          ⏳ Delivery fee pending calculation
+                                        </p>
+                                      </div>
+                                     )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </section>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

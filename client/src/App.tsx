@@ -4,7 +4,8 @@ import { HashRouter as Router, Routes, Route } from "react-router-dom";
   import TrackOrder from "./pages/TrackOrder";
   import ContactUs from "./pages/ContactUs";
   import Manager from "./pages/Manager";
-
+import Delivery from './pages/Delivery';
+import Staff from './pages/Staff';
   export default function App() {
     return (
       <Router>
@@ -14,6 +15,8 @@ import { HashRouter as Router, Routes, Route } from "react-router-dom";
           <Route path="/track" element={<TrackOrder />} />
           <Route path="/contact" element={<ContactUs />} />
           <Route path="/manager" element={<Manager />} />
+          <Route path="/delivery" element={<Delivery />} />
+          <Route path="/staff" element={<Staff />} />
         </Routes>
           <a 
             href="https://wa.me/+2349160137310" 

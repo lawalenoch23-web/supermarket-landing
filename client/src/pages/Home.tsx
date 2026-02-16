@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { Heart, ShoppingBag, Search, Edit3, Save, Trash2, CheckCircle2, Send, RefreshCw, X, Minus, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
+
 export default function Home() {
   // --- 1. CORE SYSTEM & UI STATE ---
   const [storeName, setStoreName] = useState('LOCAL MARKET');
+  const [storeSettings, setStoreSettings] = useState<any>(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState('LOCAL MARKET');
   const [isUiHidden, setIsUiHidden] = useState(false);
@@ -13,7 +15,6 @@ export default function Home() {
   const [showAddresses, setShowAddresses] = useState(false);
   const [orderId, setOrderId] = useState<string | number>('');
   const [checkoutStep, setCheckoutStep] = useState<'shopping' | 'success' | 'error'>('shopping');
-  const [isDelivery, setIsDelivery] = useState(false);
 
   // --- 2. SHOPPING & FILTER STATE ---
   const [cart, setCart] = useState<any[]>([]);
@@ -22,6 +23,27 @@ export default function Home() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [showCheckout, setShowCheckout] = useState(false);
   const [cartEffect, setCartEffect] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('cash'); 
+  // --- LOAD FAVORITES FROM LOCALSTORAGE ---
+  useEffect(() => {
+    const savedFavorites = localStorage.getItem('customer_favorites');
+    if (savedFavorites) {
+      try {
+        const parsed = JSON.parse(savedFavorites);
+        setFavorites(Array.isArray(parsed) ? parsed : []);
+      } catch (err) {
+        console.error('Error loading favorites:', err);
+        setFavorites([]);
+      }
+    }
+  }, []);
+
+  // --- SAVE FAVORITES TO LOCALSTORAGE WHEN CHANGED ---
+  useEffect(() => {
+    if (favorites.length >= 0) {
+      localStorage.setItem('customer_favorites', JSON.stringify(favorites));
+    }
+  }, [favorites]);
 
   // --- 3. DATABASE STATE ---
   const [menuItems, setMenuItems] = useState<any[]>([]);
@@ -31,6 +53,7 @@ export default function Home() {
 
   // --- 4. FORM & DEMO STATE ---
   const [clientName, setClientName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [address, setAddress] = useState('');
   const [demoOwner, setDemoOwner] = useState('');
   const [emailSent, setEmailSent] = useState(false);
@@ -40,13 +63,33 @@ export default function Home() {
     const { data } = await supabase.from('products').select('*').order('id', { ascending: true });
     if (data) setMenuItems(data);
   };
+
   const fetchCategories = async () => {
     const { data } = await supabase.from('categories').select('*').order('name');
     if (data) setCategories(data);
   };
+
   const fetchOrders = async () => {
     const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
     if (data) setAllOrders(data);
+  };
+
+  const fetchStoreSettings = async () => {
+    try {
+      const { data } = await supabase
+        .from('store_settings')
+        .select('store_name')
+        .eq('id', 1)
+        .single();
+
+      if (data) {
+        setStoreSettings(data);
+        setStoreName(data.store_name);
+        setTempName(data.store_name);
+      }
+    } catch (err) {
+      console.error('Error fetching store settings:', err);
+    }
   };
 
   // --- 6. REAL-TIME SUBSCRIPTION ---
@@ -54,6 +97,7 @@ export default function Home() {
     fetchProducts();
     fetchOrders();
     fetchCategories();
+    fetchStoreSettings();
 
     const channel = supabase
       .channel('db-changes')
@@ -62,6 +106,9 @@ export default function Home() {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
         if (isAutoRefresh) fetchProducts();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'store_settings' }, () => {
+        fetchStoreSettings();
       })
       .subscribe();
 
@@ -86,21 +133,40 @@ export default function Home() {
   };
 
   const handleConfirmOrder = async () => {
-    if (!clientName || (showAddresses && !address) || cart.length === 0) return;
+    // Only require name and address (if delivery is selected)
+    if (!clientName.trim()) {
+      alert('Please enter your name');
+      return;
+    }
+
+    if (showAddresses && !address.trim()) {
+      alert('Please enter delivery address');
+      return;
+    }
+
+    if (cart.length === 0) {
+      alert('Your bag is empty');
+      return;
+    }
+
     setOrderStatus('loading');
 
     const orderItems = cart.map(i => i.name).join(', ');
-    const totalPrice = cart.reduce((s, i) => s + i.price, 0) + (showAddresses ? 5.99 : 0);
 
-    // FIXED: Added store_name and cleaned total_price
+    // FIX 1: Removed the + 5.99 so the total is just the products
+    const totalPrice = cart.reduce((s, i) => s + i.price, 0); 
+
     const { data, error } = await supabase.from('orders').insert([{
       customer_name: clientName.toUpperCase(),
-      total_price: parseFloat(totalPrice.toFixed(2)), // Ensure clean number format
+      phone_number: phoneNumber.trim() || null,
+      total_price: parseFloat(totalPrice.toFixed(2)),
       items: orderItems,
       address: showAddresses ? address : "PICK-UP ONLY", 
       status: "PENDING",
-      store_name: storeName || 'LOCAL MARKET' // ADDED: Required field
-    }]).select();
+      store_name: storeSettings?.store_name || storeName,
+      // FIX 2: We are now saving the payment method
+      payment_method: showAddresses ? paymentMethod : 'pickup'
+    } as any]).select();
 
     if (error) {
       console.error('Order Error:', error);
@@ -114,12 +180,14 @@ export default function Home() {
       setOrderStatus('success');
       setCheckoutStep('success');
       setCart([]);
+      setClientName('');
+      setPhoneNumber('');
+      setAddress('');
     } else {
       setOrderStatus('shopping');
       alert("Order failed. Please try again.");
     }
   };
-
   const filteredItems = menuItems.filter(item => {
     const matchesSearch = item.name.toUpperCase().includes(searchQuery.toUpperCase());
     const matchesCategory = activeCategory === 'All' || 
@@ -160,12 +228,12 @@ export default function Home() {
               <input value={tempName} onChange={(e) => setTempName(e.target.value.toUpperCase())} className="bg-zinc-900 border border-orange-500/50 rounded-lg px-4 py-2 font-black italic uppercase outline-none" autoFocus />
               <button onClick={() => { setStoreName(tempName); setIsEditingName(false); }} className="bg-orange-600 p-2 rounded-lg hover:bg-orange-500 transition-colors"><Save size={16}/></button>
             </div>
-          ) : (
+          ) : 
             <div className="cursor-pointer" onClick={() => setIsEditingName(true)}>
               <h1 className="text-2xl font-black italic tracking-tighter uppercase flex items-center gap-2">{storeName} <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-orange-500"/></h1>
               <p className="text-[10px] font-bold text-zinc-600 tracking-widest uppercase italic tracking-[0.3em]">Partner Store</p>
             </div>
-          )}
+          }
         </div>
 
         <div className="flex gap-4 md:gap-6">
@@ -209,7 +277,7 @@ export default function Home() {
               activeCategory === catName ? 'bg-orange-600 border-orange-600 text-white' : 'bg-zinc-900 border-zinc-800 text-zinc-500'
             }`}
           >
-            {catName}
+            {catName === 'Favs' ? `❤️ ${catName} (${favorites.length})` : catName}
           </button>
         ))}
       </div>
@@ -220,8 +288,27 @@ export default function Home() {
           <div key={item.id} className="bg-zinc-950/50 backdrop-blur-md border border-zinc-900 rounded-2xl md:rounded-[3rem] p-3 md:p-5 group transition-all hover:border-orange-500/30 hover:scale-105 hover:shadow-2xl hover:shadow-orange-500/10">
             <div className="relative aspect-square md:aspect-[4/3] rounded-xl md:rounded-[2.5rem] overflow-hidden mb-4 md:mb-8">
               <img src={item.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={item.name} />
-              <button onClick={() => setFavorites(f => f.includes(item.id) ? f.filter(x => x!==item.id) : [...f, item.id])} className="absolute top-3 right-3 md:top-5 md:right-5 bg-black/50 p-2 md:p-4 rounded-full backdrop-blur-md hover:bg-black/70 transition-all">
-                <Heart size={14} className={`md:w-4 md:h-4 ${favorites.includes(item.id) ? 'fill-orange-500 text-orange-500' : 'text-white'}`}/>
+              <button 
+                onClick={() => {
+                  setFavorites(f => {
+                    const isFavorited = f.includes(item.id);
+                    if (isFavorited) {
+                      return f.filter(x => x !== item.id);
+                    } else {
+                      return [...f, item.id];
+                    }
+                  });
+                }} 
+                className="absolute top-3 right-3 md:top-5 md:right-5 bg-black/50 p-2 md:p-4 rounded-full backdrop-blur-md hover:bg-black/70 transition-all active:scale-95"
+              >
+                <Heart 
+                  size={14} 
+                  className={`md:w-4 md:h-4 transition-all ${
+                    favorites.includes(item.id) 
+                      ? 'fill-orange-500 text-orange-500 scale-110' 
+                      : 'text-white'
+                  }`}
+                />
               </button>
             </div>
             <div className="px-2 md:px-4 text-center">
@@ -250,7 +337,7 @@ export default function Home() {
       {/* CHECKOUT MODAL */}
       {showCheckout && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 md:p-6 bg-black/95 backdrop-blur-md">
-          <div className="bg-[#0c0c0c] border border-zinc-900 w-full max-w-lg rounded-3xl md:rounded-[4rem] p-8 md:p-12 shadow-2xl animate-in zoom-in">
+          <div className="bg-[#0c0c0c] border border-zinc-900 w-full max-w-lg rounded-3xl md:rounded-[4rem] p-6 md:p-10 shadow-2xl animate-in zoom-in max-h-[90vh] overflow-y-auto no-scrollbar">
             <div className="flex justify-between items-center mb-8 md:mb-10">
               <h2 className="text-3xl md:text-4xl font-black italic uppercase">Your Bag</h2>
               <button onClick={() => setShowCheckout(false)} className="text-zinc-600 hover:text-white transition-colors p-2">
@@ -272,51 +359,129 @@ export default function Home() {
             </div>
 
             <div className="space-y-3 md:space-y-4 mb-8 md:mb-10">
-              <input placeholder="FULL NAME" value={clientName} onChange={e => setClientName(e.target.value.toUpperCase())} className="w-full bg-black/50 backdrop-blur-sm border border-zinc-900 rounded-xl md:rounded-2xl py-5 md:py-6 px-6 md:px-8 text-xs md:text-[11px] font-black uppercase outline-none focus:border-orange-500 transition-all" />
+        <input 
+          placeholder="FULL NAME" 
+          value={clientName} 
+          onChange={e => setClientName(e.target.value.toUpperCase())} 
+          className="w-full bg-black/50 backdrop-blur-sm border border-zinc-900 rounded-xl md:rounded-2xl py-5 md:py-6 px-6 md:px-8 text-xs md:text-[11px] font-black uppercase outline-none focus:border-orange-500 transition-all" 
+        />
 
-              <div className="flex items-center justify-between p-4 md:p-3 bg-zinc-900/50 backdrop-blur-sm rounded-xl border border-zinc-800">
-                <span className="text-xs md:text-[10px] font-black text-zinc-500 uppercase">Need Delivery? (+₦5.99)</span>
-                <button 
-                  onClick={() => setShowAddresses(!showAddresses)}
-                  className={`w-12 h-6 md:w-10 md:h-5 rounded-full transition-all relative ${showAddresses ? 'bg-orange-500' : 'bg-zinc-700'}`}
+        <input 
+          placeholder="PHONE NUMBER" 
+          value={phoneNumber} 
+          onChange={e => setPhoneNumber(e.target.value)} 
+          className="w-full bg-black/50 backdrop-blur-sm border border-zinc-900 rounded-xl md:rounded-2xl py-5 md:py-6 px-6 md:px-8 text-xs md:text-[11px] font-black uppercase outline-none focus:border-orange-500 transition-all" 
+          type="tel" 
+        />
+
+        <div className="flex items-center justify-between p-4 md:p-3 bg-zinc-900/50 backdrop-blur-sm rounded-xl border border-zinc-800">
+          <span className="text-xs md:text-[10px] font-black text-zinc-500 uppercase">Need Delivery?</span>
+          <button 
+            onClick={() => setShowAddresses(!showAddresses)}
+            className={`w-12 h-6 md:w-10 md:h-5 rounded-full transition-all relative ${showAddresses ? 'bg-orange-500' : 'bg-zinc-700'}`}
+          >
+            <div className={`absolute top-1 w-4 h-4 md:w-3 md:h-3 bg-white rounded-full transition-all ${showAddresses ? 'left-7 md:left-6' : 'left-1'}`} />
+          </button>
+        </div>
+
+        {showAddresses && (
+          <>
+            <input
+              placeholder="DELIVERY ADDRESS"
+              value={address}
+              onChange={(e) => setAddress(e.target.value.toUpperCase())}
+              className="w-full bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 py-5 md:py-6 px-6 md:px-8 rounded-xl md:rounded-2xl text-white text-xs md:text-[11px] font-black uppercase outline-none focus:border-orange-500 transition-all"
+            />
+
+            {/* PAYMENT METHOD */}
+            <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-xl">
+              <p className="text-xs font-black text-blue-400 uppercase mb-3">Payment Method</p>
+              <div className="space-y-2">
+                <button
+                  onClick={() => setPaymentMethod('cash')}
+                  className={`w-full p-3 rounded-lg font-black text-xs uppercase transition-all ${
+                    paymentMethod === 'cash'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-black/50 text-zinc-400 hover:bg-black/70'
+                  }`}
                 >
-                  <div className={`absolute top-1 w-4 h-4 md:w-3 md:h-3 bg-white rounded-full transition-all ${showAddresses ? 'left-7 md:left-6' : 'left-1'}`} />
+                  💵 Cash on Delivery
+                </button>
+                <button
+                  onClick={() => setPaymentMethod('transfer')}
+                  className={`w-full p-3 rounded-lg font-black text-xs uppercase transition-all ${
+                    paymentMethod === 'transfer'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-black/50 text-zinc-400 hover:bg-black/70'
+                  }`}
+                >
+                  📱 Transfer on Delivery
                 </button>
               </div>
-
-              {showAddresses && (
-                <input
-                  placeholder="DELIVERY ADDRESS"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value.toUpperCase())}
-                  className="w-full bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 py-5 md:py-6 px-6 md:px-8 rounded-xl md:rounded-2xl text-white text-xs md:text-[11px] font-black uppercase outline-none focus:border-orange-500 transition-all"
-                />
-              )}
             </div>
 
-            <div className="flex justify-between items-center mb-8 md:mb-10 px-2 md:px-4 border-t border-zinc-900 pt-6 md:pt-8">
-              <span className="text-xl md:text-2xl font-black italic uppercase">Total</span>
-              <span className="text-xl md:text-2xl font-black italic text-orange-500">
-                ₦{(cart.reduce((s, i) => s + i.price, 0) + (showAddresses ? 5.99 : 0)).toLocaleString()}
-              </span>
+            {/* DELIVERY INFO */}
+            <div className="bg-orange-500/10 border border-orange-500/30 p-4 rounded-xl">
+              <p className="text-xs text-orange-400 leading-relaxed">
+                <strong>Delivery Fee:</strong> Will be calculated based on actual distance traveled. 
+                Our driver will measure and inform you of the fee upon arrival. 
+                Pay {paymentMethod === 'cash' ? 'cash' : 'via transfer'} on delivery.
+              </p>
             </div>
+          </>
+        )}
+      </div>
 
-            <button 
-              onClick={handleConfirmOrder} 
-              disabled={orderStatus === 'loading'}
-              className="w-full bg-orange-600 text-white py-6 md:py-7 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-sm md:text-xs tracking-[0.2em] shadow-2xl active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {orderStatus === 'loading' ? 'Processing...' : 'Confirm Order'}
-            </button>
-          </div>
+      {/* UPDATE TOTAL DISPLAY */}
+      <div className="flex justify-between items-center mb-8 md:mb-10 px-2 md:px-4 border-t border-zinc-900 pt-6 md:pt-8">
+        <span className="text-xl md:text-2xl font-black italic uppercase">
+          {showAddresses ? 'Products Total' : 'Total'}
+        </span>
+        <span className="text-xl md:text-2xl font-black italic text-orange-500">
+          ₦{cart.reduce((s, i) => s + i.price, 0).toLocaleString()}
+        </span>
+      </div>
+
+      {showAddresses && (
+        <div className="bg-zinc-900/50 p-4 rounded-xl mb-8 text-center">
+          <p className="text-xs text-zinc-400 font-bold">
+            + Delivery Fee (calculated on arrival)
+          </p>
         </div>
       )}
+            {/* ADD THIS BUTTON HERE */}
+            <button 
+              onClick={handleConfirmOrder}
+              disabled={orderStatus === 'loading'}
+              className={`w-full py-6 rounded-2xl font-black uppercase text-sm tracking-widest transition-all active:scale-95 mb-4 ${
+                orderStatus === 'loading' 
+                  ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
+                  : 'bg-orange-600 text-white hover:bg-orange-500 shadow-xl shadow-orange-900/20'
+              }`}
+            >
+              {orderStatus === 'loading' ? (
+                <div className="flex items-center justify-center gap-2">
+                  <RefreshCw size={16} className="animate-spin" /> PROCESSING...
+                </div>
+              ) : (
+                'Place Order'
+              )}
+            </button>
 
+            <button 
+              onClick={() => setShowCheckout(false)}
+              className="w-full py-4 text-[10px] font-black uppercase text-zinc-600 hover:text-white transition-colors"
+            >
+              Continue Shopping
+            </button>
       {/* FOOTER */}
       <footer className="py-12 md:py-20 text-center border-t border-zinc-900 mt-16 md:mt-20 opacity-40">
          <button onClick={() => setIsUiHidden(!isUiHidden)} className="text-[9px] md:text-[10px] font-black text-white uppercase tracking-[0.4em] md:tracking-[0.5em] mb-6 md:mb-10 hover:text-orange-500 transition-colors">Hide UI</button>
          <p className="text-[9px] md:text-[10px] font-bold tracking-[1em] md:tracking-[1.5em] text-white uppercase">P O P O P ' S  D R E A M  •  2 0 2 6</p>
       </footer>
-    </div>
-  );
-}
+          </div>
+                  </div>
+                )} 
+              </div>
+            );
+          }

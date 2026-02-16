@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { Heart, ShoppingBag, Search, Edit3, Save, Trash2, CheckCircle2, Send, RefreshCw, X, Minus, Plus } from 'lucide-react';
+import { Heart, ShoppingBag, Search, Edit3, Save, Trash2, CheckCircle2, Send, RefreshCw, X, Minus, Plus, AlertCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function Home() {
@@ -15,6 +15,7 @@ export default function Home() {
   const [showAddresses, setShowAddresses] = useState(false);
   const [orderId, setOrderId] = useState<string | number>('');
   const [checkoutStep, setCheckoutStep] = useState<'shopping' | 'success' | 'error'>('shopping');
+  const [deliveryFeePerKm, setDeliveryFeePerKm] = useState(150);
 
   // --- 2. SHOPPING & FILTER STATE ---
   const [cart, setCart] = useState<any[]>([]);
@@ -24,6 +25,7 @@ export default function Home() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [cartEffect, setCartEffect] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('cash'); 
+
   // --- LOAD FAVORITES FROM LOCALSTORAGE ---
   useEffect(() => {
     const savedFavorites = localStorage.getItem('customer_favorites');
@@ -78,7 +80,7 @@ export default function Home() {
     try {
       const { data } = await supabase
         .from('store_settings')
-        .select('store_name')
+        .select('*')
         .eq('id', 1)
         .single();
 
@@ -86,6 +88,7 @@ export default function Home() {
         setStoreSettings(data);
         setStoreName(data.store_name);
         setTempName(data.store_name);
+        setDeliveryFeePerKm(data.delivery_fee_per_km || 150);
       }
     } catch (err) {
       console.error('Error fetching store settings:', err);
@@ -152,19 +155,17 @@ export default function Home() {
     setOrderStatus('loading');
 
     const orderItems = cart.map(i => i.name).join(', ');
+    const totalPrice = cart.reduce((s, i) => s + i.price, 0);
 
-    // FIX 1: Removed the + 5.99 so the total is just the products
-    const totalPrice = cart.reduce((s, i) => s + i.price, 0); 
-
+    // Insert order first
     const { data, error } = await supabase.from('orders').insert([{
       customer_name: clientName.toUpperCase(),
       phone_number: phoneNumber.trim() || null,
       total_price: parseFloat(totalPrice.toFixed(2)),
       items: orderItems,
-      address: showAddresses ? address : "PICK-UP ONLY", 
+      address: showAddresses ? address : null,
       status: "PENDING",
       store_name: storeSettings?.store_name || storeName,
-      // FIX 2: We are now saving the payment method
       payment_method: showAddresses ? paymentMethod : 'pickup'
     } as any]).select();
 
@@ -175,6 +176,17 @@ export default function Home() {
       return;
     }
 
+    // **CRITICAL: Decrement stock for each item in cart**
+    for (const item of cart) {
+      const currentStock = item.stock || 0;
+      const newStock = Math.max(0, currentStock - 1);
+
+      await supabase
+        .from('products')
+        .update({ stock: newStock })
+        .eq('id', item.id);
+    }
+
     if (data && data.length > 0) {
       setOrderId(data[0].id);
       setOrderStatus('success');
@@ -183,11 +195,15 @@ export default function Home() {
       setClientName('');
       setPhoneNumber('');
       setAddress('');
+
+      // Refresh products to show updated stock
+      fetchProducts();
     } else {
       setOrderStatus('shopping');
       alert("Order failed. Please try again.");
     }
   };
+
   const filteredItems = menuItems.filter(item => {
     const matchesSearch = item.name.toUpperCase().includes(searchQuery.toUpperCase());
     const matchesCategory = activeCategory === 'All' || 
@@ -195,6 +211,9 @@ export default function Home() {
                            item.category === activeCategory;
     return matchesSearch && matchesCategory;
   });
+
+  // Calculate estimated delivery fee
+  const estimatedDeliveryFee = deliveryFeePerKm * 2; // Assuming average 2km
 
   // --- 8. SUCCESS VIEW ---
   if (orderStatus === 'success') {
@@ -284,40 +303,78 @@ export default function Home() {
 
       {/* PRODUCT GRID */}
       <div className="max-w-full px-6 lg:px-20 mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6 lg:gap-8 py-12 md:py-20">
-        {filteredItems.map((item) => (
-          <div key={item.id} className="bg-zinc-950/50 backdrop-blur-md border border-zinc-900 rounded-2xl md:rounded-[3rem] p-3 md:p-5 group transition-all hover:border-orange-500/30 hover:scale-105 hover:shadow-2xl hover:shadow-orange-500/10">
-            <div className="relative aspect-square md:aspect-[4/3] rounded-xl md:rounded-[2.5rem] overflow-hidden mb-4 md:mb-8">
-              <img src={item.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={item.name} />
-              <button 
-                onClick={() => {
-                  setFavorites(f => {
-                    const isFavorited = f.includes(item.id);
-                    if (isFavorited) {
-                      return f.filter(x => x !== item.id);
-                    } else {
-                      return [...f, item.id];
+        {filteredItems.map((item) => {
+          const stock = item.stock || 0;
+          const isSoldOut = stock <= 0;
+          const isLowStock = stock > 0 && stock < 5;
+
+          return (
+            <div key={item.id} className={`bg-zinc-950/50 backdrop-blur-md border border-zinc-900 rounded-2xl md:rounded-[3rem] p-3 md:p-5 group transition-all hover:border-orange-500/30 hover:scale-105 hover:shadow-2xl hover:shadow-orange-500/10 ${isSoldOut ? 'opacity-60' : ''}`}>
+              <div className="relative aspect-square md:aspect-[4/3] rounded-xl md:rounded-[2.5rem] overflow-hidden mb-4 md:mb-8">
+                <img src={item.image} className={`w-full h-full object-cover transition-transform duration-700 ${isSoldOut ? 'grayscale' : 'group-hover:scale-110'}`} alt={item.name} />
+
+                {/* SOLD OUT OVERLAY */}
+                {isSoldOut && (
+                  <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center">
+                    <div className="bg-red-600 px-4 py-2 rounded-xl rotate-[-15deg]">
+                      <p className="text-white font-black text-sm uppercase tracking-wider">SOLD OUT</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* LOW STOCK BADGE */}
+                {isLowStock && !isSoldOut && (
+                  <div className="absolute top-3 left-3 bg-yellow-500 px-3 py-1 rounded-lg">
+                    <p className="text-black font-black text-[8px] uppercase">Only {stock} left!</p>
+                  </div>
+                )}
+
+                <button 
+                  onClick={() => {
+                    setFavorites(f => {
+                      const isFavorited = f.includes(item.id);
+                      if (isFavorited) {
+                        return f.filter(x => x !== item.id);
+                      } else {
+                        return [...f, item.id];
+                      }
+                    });
+                  }} 
+                  className="absolute top-3 right-3 md:top-5 md:right-5 bg-black/50 p-2 md:p-4 rounded-full backdrop-blur-md hover:bg-black/70 transition-all active:scale-95"
+                >
+                  <Heart 
+                    size={14} 
+                    className={`md:w-4 md:h-4 transition-all ${
+                      favorites.includes(item.id) 
+                        ? 'fill-orange-500 text-orange-500 scale-110' 
+                        : 'text-white'
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="px-2 md:px-4 text-center">
+                <h3 className="text-[10px] md:text-xs font-black italic uppercase mb-2 line-clamp-2">{item.name}</h3>
+                <p className="text-orange-500 font-black mb-4 md:mb-8 text-lg md:text-xl italic">₦{item.price?.toLocaleString()}</p>
+                <button 
+                  onClick={() => { 
+                    if (!isSoldOut) {
+                      setCart([...cart, item]); 
+                      triggerCartEffect(); 
                     }
-                  });
-                }} 
-                className="absolute top-3 right-3 md:top-5 md:right-5 bg-black/50 p-2 md:p-4 rounded-full backdrop-blur-md hover:bg-black/70 transition-all active:scale-95"
-              >
-                <Heart 
-                  size={14} 
-                  className={`md:w-4 md:h-4 transition-all ${
-                    favorites.includes(item.id) 
-                      ? 'fill-orange-500 text-orange-500 scale-110' 
-                      : 'text-white'
+                  }} 
+                  disabled={isSoldOut}
+                  className={`w-full py-3 md:py-5 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase transition-all active:scale-95 ${
+                    isSoldOut 
+                      ? 'bg-zinc-900/50 text-zinc-600 cursor-not-allowed' 
+                      : 'bg-zinc-900/80 backdrop-blur-sm text-zinc-500 group-hover:bg-white group-hover:text-black'
                   }`}
-                />
-              </button>
+                >
+                  {isSoldOut ? 'Out of Stock' : 'Add to Bag'}
+                </button>
+              </div>
             </div>
-            <div className="px-2 md:px-4 text-center">
-              <h3 className="text-[10px] md:text-xs font-black italic uppercase mb-2 line-clamp-2">{item.name}</h3>
-              <p className="text-orange-500 font-black mb-4 md:mb-8 text-lg md:text-xl italic">₦{item.price?.toLocaleString()}</p>
-              <button onClick={() => { setCart([...cart, item]); triggerCartEffect(); }} className="w-full bg-zinc-900/80 backdrop-blur-sm text-zinc-500 py-3 md:py-5 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase group-hover:bg-white group-hover:text-black transition-all active:scale-95">Add to Bag</button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* DEMO REQUEST */}
@@ -334,154 +391,191 @@ export default function Home() {
         </div>
       </div>
 
-      {/* CHECKOUT MODAL */}
+      {/* CHECKOUT MODAL - FIXED HEIGHT FOR MOBILE */}
       {showCheckout && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 md:p-6 bg-black/95 backdrop-blur-md">
-          <div className="bg-[#0c0c0c] border border-zinc-900 w-full max-w-lg rounded-3xl md:rounded-[4rem] p-6 md:p-10 shadow-2xl animate-in zoom-in max-h-[90vh] overflow-y-auto no-scrollbar">
-            <div className="flex justify-between items-center mb-8 md:mb-10">
-              <h2 className="text-3xl md:text-4xl font-black italic uppercase">Your Bag</h2>
-              <button onClick={() => setShowCheckout(false)} className="text-zinc-600 hover:text-white transition-colors p-2">
-                <X size={24} />
-              </button>
-            </div>
-
-            <div className="space-y-2 md:space-y-3 mb-8 md:mb-10 max-h-[200px] overflow-y-auto no-scrollbar pr-2">
-              {cart.map((item, i) => (
-                <div key={i} className="bg-black/50 backdrop-blur-sm border border-zinc-900 p-4 md:p-5 rounded-xl md:rounded-2xl flex justify-between items-center group">
-                  <span className="text-xs md:text-[10px] font-black uppercase italic tracking-tighter">{item.name}</span>
-                  <div className="flex items-center gap-3 md:gap-4">
-                    <span className="text-orange-500 font-bold text-xs md:text-[10px]">₦{item.price.toLocaleString()}</span>
-                    <button onClick={() => { const n = [...cart]; n.splice(i,1); setCart(n); }} className="text-red-900 hover:text-red-500 text-[9px] md:text-[8px] font-black uppercase opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1">Remove</button>
-                  </div>
-                </div>
-              ))}
-              {cart.length === 0 && <p className="text-center text-zinc-700 text-xs md:text-[9px] font-black py-8 md:py-4 uppercase tracking-widest">Bag is Empty</p>}
-            </div>
-
-            <div className="space-y-3 md:space-y-4 mb-8 md:mb-10">
-        <input 
-          placeholder="FULL NAME" 
-          value={clientName} 
-          onChange={e => setClientName(e.target.value.toUpperCase())} 
-          className="w-full bg-black/50 backdrop-blur-sm border border-zinc-900 rounded-xl md:rounded-2xl py-5 md:py-6 px-6 md:px-8 text-xs md:text-[11px] font-black uppercase outline-none focus:border-orange-500 transition-all" 
-        />
-
-        <input 
-          placeholder="PHONE NUMBER" 
-          value={phoneNumber} 
-          onChange={e => setPhoneNumber(e.target.value)} 
-          className="w-full bg-black/50 backdrop-blur-sm border border-zinc-900 rounded-xl md:rounded-2xl py-5 md:py-6 px-6 md:px-8 text-xs md:text-[11px] font-black uppercase outline-none focus:border-orange-500 transition-all" 
-          type="tel" 
-        />
-
-        <div className="flex items-center justify-between p-4 md:p-3 bg-zinc-900/50 backdrop-blur-sm rounded-xl border border-zinc-800">
-          <span className="text-xs md:text-[10px] font-black text-zinc-500 uppercase">Need Delivery?</span>
-          <button 
-            onClick={() => setShowAddresses(!showAddresses)}
-            className={`w-12 h-6 md:w-10 md:h-5 rounded-full transition-all relative ${showAddresses ? 'bg-orange-500' : 'bg-zinc-700'}`}
-          >
-            <div className={`absolute top-1 w-4 h-4 md:w-3 md:h-3 bg-white rounded-full transition-all ${showAddresses ? 'left-7 md:left-6' : 'left-1'}`} />
-          </button>
-        </div>
-
-        {showAddresses && (
-          <>
-            <input
-              placeholder="DELIVERY ADDRESS"
-              value={address}
-              onChange={(e) => setAddress(e.target.value.toUpperCase())}
-              className="w-full bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 py-5 md:py-6 px-6 md:px-8 rounded-xl md:rounded-2xl text-white text-xs md:text-[11px] font-black uppercase outline-none focus:border-orange-500 transition-all"
-            />
-
-            {/* PAYMENT METHOD */}
-            <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-xl">
-              <p className="text-xs font-black text-blue-400 uppercase mb-3">Payment Method</p>
-              <div className="space-y-2">
-                <button
-                  onClick={() => setPaymentMethod('cash')}
-                  className={`w-full p-3 rounded-lg font-black text-xs uppercase transition-all ${
-                    paymentMethod === 'cash'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-black/50 text-zinc-400 hover:bg-black/70'
-                  }`}
-                >
-                  💵 Cash on Delivery
-                </button>
-                <button
-                  onClick={() => setPaymentMethod('transfer')}
-                  className={`w-full p-3 rounded-lg font-black text-xs uppercase transition-all ${
-                    paymentMethod === 'transfer'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-black/50 text-zinc-400 hover:bg-black/70'
-                  }`}
-                >
-                  📱 Transfer on Delivery
+          <div className="bg-[#0c0c0c] border border-zinc-900 w-full max-w-lg rounded-3xl md:rounded-[4rem] shadow-2xl animate-in zoom-in max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div className="p-6 md:p-10">
+              <div className="flex justify-between items-center mb-8 md:mb-10">
+                <h2 className="text-3xl md:text-4xl font-black italic uppercase">Your Bag</h2>
+                <button onClick={() => setShowCheckout(false)} className="text-zinc-600 hover:text-white transition-colors p-2">
+                  <X size={24} />
                 </button>
               </div>
+
+              <div className="space-y-2 md:space-y-3 mb-8 md:mb-10 max-h-[200px] overflow-y-auto custom-scrollbar pr-2">
+                {cart.map((item, i) => (
+                  <div key={i} className="bg-black/50 backdrop-blur-sm border border-zinc-900 p-4 md:p-5 rounded-xl md:rounded-2xl flex justify-between items-center group">
+                    <span className="text-xs md:text-[10px] font-black uppercase italic tracking-tighter">{item.name}</span>
+                    <div className="flex items-center gap-3 md:gap-4">
+                      <span className="text-orange-500 font-bold text-xs md:text-[10px]">₦{item.price.toLocaleString()}</span>
+                      <button onClick={() => { const n = [...cart]; n.splice(i,1); setCart(n); }} className="text-red-900 hover:text-red-500 text-[9px] md:text-[8px] font-black uppercase opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1">Remove</button>
+                    </div>
+                  </div>
+                ))}
+                {cart.length === 0 && <p className="text-center text-zinc-700 text-xs md:text-[9px] font-black py-8 md:py-4 uppercase tracking-widest">Bag is Empty</p>}
+              </div>
+
+              <div className="space-y-3 md:space-y-4 mb-8 md:mb-10">
+                <input 
+                  placeholder="FULL NAME" 
+                  value={clientName} 
+                  onChange={e => setClientName(e.target.value.toUpperCase())} 
+                  className="w-full bg-black/50 backdrop-blur-sm border border-zinc-900 rounded-xl md:rounded-2xl py-5 md:py-6 px-6 md:px-8 text-xs md:text-[11px] font-black uppercase outline-none focus:border-orange-500 transition-all" 
+                />
+
+                <input 
+                  placeholder="PHONE NUMBER (Optional)" 
+                  value={phoneNumber} 
+                  onChange={e => setPhoneNumber(e.target.value)} 
+                  className="w-full bg-black/50 backdrop-blur-sm border border-zinc-900 rounded-xl md:rounded-2xl py-5 md:py-6 px-6 md:px-8 text-xs md:text-[11px] font-black uppercase outline-none focus:border-orange-500 transition-all" 
+                  type="tel" 
+                />
+
+                <div className="flex items-center justify-between p-4 md:p-3 bg-zinc-900/50 backdrop-blur-sm rounded-xl border border-zinc-800">
+                  <span className="text-xs md:text-[10px] font-black text-zinc-500 uppercase">Need Delivery?</span>
+                  <button 
+                    onClick={() => setShowAddresses(!showAddresses)}
+                    className={`w-12 h-6 md:w-10 md:h-5 rounded-full transition-all relative ${showAddresses ? 'bg-orange-500' : 'bg-zinc-700'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 md:w-3 md:h-3 bg-white rounded-full transition-all ${showAddresses ? 'left-7 md:left-6' : 'left-1'}`} />
+                  </button>
+                </div>
+
+                {showAddresses && (
+                  <>
+                    <input
+                      placeholder="DELIVERY ADDRESS"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value.toUpperCase())}
+                      className="w-full bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 py-5 md:py-6 px-6 md:px-8 rounded-xl md:rounded-2xl text-white text-xs md:text-[11px] font-black uppercase outline-none focus:border-orange-500 transition-all"
+                    />
+
+                    {/* PAYMENT METHOD */}
+                    <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-xl">
+                      <p className="text-xs font-black text-blue-400 uppercase mb-3">Payment Method</p>
+                      <div className="space-y-2">
+                        <button
+                          onClick={() => setPaymentMethod('cash')}
+                          className={`w-full p-3 rounded-lg font-black text-xs uppercase transition-all ${
+                            paymentMethod === 'cash'
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-black/50 text-zinc-400 hover:bg-black/70'
+                          }`}
+                        >
+                          💵 Cash on Delivery
+                        </button>
+                        <button
+                          onClick={() => setPaymentMethod('transfer')}
+                          className={`w-full p-3 rounded-lg font-black text-xs uppercase transition-all ${
+                            paymentMethod === 'transfer'
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-black/50 text-zinc-400 hover:bg-black/70'
+                          }`}
+                        >
+                          📱 Transfer on Delivery
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* DELIVERY INFO WITH ESTIMATED FEE */}
+                    <div className="bg-orange-500/10 border border-orange-500/30 p-4 rounded-xl">
+                      <div className="flex items-start gap-2 mb-3">
+                        <AlertCircle size={16} className="text-orange-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-black text-orange-400 uppercase mb-1">Delivery Fee</p>
+                          <p className="text-xs text-orange-400/80 leading-relaxed">
+                            <strong>Estimated:</strong> ₦{estimatedDeliveryFee.toLocaleString()} (₦{deliveryFeePerKm}/km)
+                          </p>
+                          <p className="text-xs text-orange-400/60 leading-relaxed mt-2">
+                            Final fee will be calculated based on actual distance traveled. 
+                            Our driver will measure and inform you upon arrival. 
+                            Pay {paymentMethod === 'cash' ? 'cash' : 'via transfer'} on delivery.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* UPDATE TOTAL DISPLAY */}
+              <div className="flex justify-between items-center mb-8 md:mb-10 px-2 md:px-4 border-t border-zinc-900 pt-6 md:pt-8">
+                <span className="text-xl md:text-2xl font-black italic uppercase">
+                  {showAddresses ? 'Products Total' : 'Total'}
+                </span>
+                <span className="text-xl md:text-2xl font-black italic text-orange-500">
+                  ₦{cart.reduce((s, i) => s + i.price, 0).toLocaleString()}
+                </span>
+              </div>
+
+              {showAddresses && (
+                <div className="bg-zinc-900/50 p-4 rounded-xl mb-8 text-center">
+                  <p className="text-xs text-zinc-400 font-bold">
+                    + Delivery Fee (≈ ₦{estimatedDeliveryFee.toLocaleString()}, calculated on arrival)
+                  </p>
+                </div>
+              )}
+
+              <button 
+                onClick={handleConfirmOrder}
+                disabled={orderStatus === 'loading'}
+                className={`w-full py-6 rounded-2xl font-black uppercase text-sm tracking-widest transition-all active:scale-95 mb-4 ${
+                  orderStatus === 'loading' 
+                    ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
+                    : 'bg-orange-600 text-white hover:bg-orange-500 shadow-xl shadow-orange-900/20'
+                }`}
+              >
+                {orderStatus === 'loading' ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <RefreshCw size={16} className="animate-spin" /> PROCESSING...
+                  </div>
+                ) : (
+                  'Place Order'
+                )}
+              </button>
+
+              <button 
+                onClick={() => setShowCheckout(false)}
+                className="w-full py-4 text-[10px] font-black uppercase text-zinc-600 hover:text-white transition-colors"
+              >
+                Continue Shopping
+              </button>
             </div>
-
-            {/* DELIVERY INFO */}
-            <div className="bg-orange-500/10 border border-orange-500/30 p-4 rounded-xl">
-              <p className="text-xs text-orange-400 leading-relaxed">
-                <strong>Delivery Fee:</strong> Will be calculated based on actual distance traveled. 
-                Our driver will measure and inform you of the fee upon arrival. 
-                Pay {paymentMethod === 'cash' ? 'cash' : 'via transfer'} on delivery.
-              </p>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* UPDATE TOTAL DISPLAY */}
-      <div className="flex justify-between items-center mb-8 md:mb-10 px-2 md:px-4 border-t border-zinc-900 pt-6 md:pt-8">
-        <span className="text-xl md:text-2xl font-black italic uppercase">
-          {showAddresses ? 'Products Total' : 'Total'}
-        </span>
-        <span className="text-xl md:text-2xl font-black italic text-orange-500">
-          ₦{cart.reduce((s, i) => s + i.price, 0).toLocaleString()}
-        </span>
-      </div>
-
-      {showAddresses && (
-        <div className="bg-zinc-900/50 p-4 rounded-xl mb-8 text-center">
-          <p className="text-xs text-zinc-400 font-bold">
-            + Delivery Fee (calculated on arrival)
-          </p>
+          </div>
         </div>
       )}
-            {/* ADD THIS BUTTON HERE */}
-            <button 
-              onClick={handleConfirmOrder}
-              disabled={orderStatus === 'loading'}
-              className={`w-full py-6 rounded-2xl font-black uppercase text-sm tracking-widest transition-all active:scale-95 mb-4 ${
-                orderStatus === 'loading' 
-                  ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
-                  : 'bg-orange-600 text-white hover:bg-orange-500 shadow-xl shadow-orange-900/20'
-              }`}
-            >
-              {orderStatus === 'loading' ? (
-                <div className="flex items-center justify-center gap-2">
-                  <RefreshCw size={16} className="animate-spin" /> PROCESSING...
-                </div>
-              ) : (
-                'Place Order'
-              )}
-            </button>
 
-            <button 
-              onClick={() => setShowCheckout(false)}
-              className="w-full py-4 text-[10px] font-black uppercase text-zinc-600 hover:text-white transition-colors"
-            >
-              Continue Shopping
-            </button>
       {/* FOOTER */}
       <footer className="py-12 md:py-20 text-center border-t border-zinc-900 mt-16 md:mt-20 opacity-40">
          <button onClick={() => setIsUiHidden(!isUiHidden)} className="text-[9px] md:text-[10px] font-black text-white uppercase tracking-[0.4em] md:tracking-[0.5em] mb-6 md:mb-10 hover:text-orange-500 transition-colors">Hide UI</button>
          <p className="text-[9px] md:text-[10px] font-bold tracking-[1em] md:tracking-[1.5em] text-white uppercase">P O P O P ' S  D R E A M  •  2 0 2 6</p>
       </footer>
-          </div>
-                  </div>
-                )} 
-              </div>
-            );
-          }
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+          height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #18181b;
+          border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #3f3f46;
+          border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #f97316;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
+    </div>
+  );
+}

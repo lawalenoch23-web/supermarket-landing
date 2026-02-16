@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { Search, Package, Clock, Truck, CheckCircle2, X, MapPin } from 'lucide-react';
+import { Search, Package, Clock, Truck, CheckCircle2, X, MapPin, DollarSign, AlertCircle } from 'lucide-react';
 
 export default function TrackOrder() {
   const [id, setId] = useState('');
@@ -165,13 +165,26 @@ export default function TrackOrder() {
                   <span className="text-xs font-black uppercase">{res.customer_name}</span>
                 </div>
 
-                {res.address && res.address !== "PICK-UP ONLY" && (
-                  <div className="flex items-start gap-2 bg-black/40 p-3 rounded-xl border border-zinc-900">
+                {/* Delivery Address with Payment Method */}
+                {res.address && res.address !== null && (
+                  <div className="flex items-start gap-2 bg-orange-500/5 p-3 rounded-xl border border-orange-500/20">
                     <MapPin size={14} className="text-orange-500 mt-0.5 flex-shrink-0" />
                     <div className="flex-1">
-                      <p className="text-[9px] text-zinc-500 font-black uppercase mb-1">Delivery Address</p>
-                      <p className="text-xs font-bold">{res.address}</p>
+                      <p className="text-[9px] text-orange-500 font-black uppercase mb-1">Delivery Address</p>
+                      <p className="text-xs font-bold mb-2">{res.address}</p>
+                      {res.payment_method && (
+                        <p className="text-[9px] text-zinc-500 font-bold">
+                          Payment: {res.payment_method === 'cash' ? '💵 Cash' : '📱 Transfer'} on delivery
+                        </p>
+                      )}
                     </div>
+                  </div>
+                )}
+
+                {/* Pickup Badge */}
+                {(!res.address || res.address === null) && (
+                  <div className="bg-blue-500/10 border border-blue-500/30 p-3 rounded-xl text-center">
+                    <p className="text-xs text-blue-400 font-black uppercase">📦 Pickup Order</p>
                   </div>
                 )}
 
@@ -209,25 +222,62 @@ export default function TrackOrder() {
               {/* PRICING BREAKDOWN */}
               <div className="space-y-3 pb-6 border-b border-zinc-900">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-zinc-500 font-bold uppercase">Subtotal</span>
+                  <span className="text-xs text-zinc-500 font-bold uppercase">Products Total</span>
                   <span className="text-sm font-bold">₦{Number(res.total_price).toLocaleString()}</span>
                 </div>
 
-                {res.address !== "PICK-UP ONLY" && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-zinc-500 font-bold uppercase">Delivery Fee</span>
-                    <span className="text-sm font-bold text-green-500">₦5.99</span>
-                  </div>
+                {/* Delivery Fee Section - Only show for delivery orders */}
+                {res.address && res.address !== null && (
+                  <>
+                    {res.delivery_fee > 0 ? (
+                      <div className="bg-green-500/10 border border-green-500/30 p-3 rounded-xl">
+                        <div className="flex justify-between items-center mb-2">
+                          <div>
+                            <p className="text-xs text-green-400 font-black uppercase">Delivery Fee</p>
+                            <p className="text-[9px] text-zinc-500 mt-1">
+                              Distance: {res.delivery_distance}km traveled
+                            </p>
+                          </div>
+                          <p className="text-lg font-black text-green-500">
+                            ₦{Number(res.delivery_fee).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-yellow-500/10 border border-yellow-500/30 p-3 rounded-xl">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle size={14} className="text-yellow-500 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-xs text-yellow-500 font-black uppercase mb-1">Delivery Fee Pending</p>
+                            <p className="text-[9px] text-yellow-500/70">
+                              Fee will be calculated based on actual distance traveled and collected on delivery
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
               {/* TOTAL */}
               <div className="flex justify-between items-center pt-6">
-                <span className="text-lg font-black italic uppercase">Total Paid</span>
+                <span className="text-lg font-black italic uppercase">
+                  {res.address && res.address !== null && res.delivery_fee > 0 ? 'Total Amount' : 'Total Paid'}
+                </span>
                 <span className="text-2xl md:text-3xl font-black italic text-orange-500">
-                  ₦{Number(res.total_price).toLocaleString()}
+                  ₦{(res.final_total || res.total_price).toLocaleString()}
                 </span>
               </div>
+
+              {/* Delivery Fee Note */}
+              {res.address && res.address !== null && res.delivery_fee === 0 && (
+                <div className="mt-4 bg-zinc-900/50 border border-zinc-800 p-3 rounded-xl">
+                  <p className="text-[9px] text-zinc-500 text-center font-bold">
+                    + Delivery fee (to be calculated and collected on arrival)
+                  </p>
+                </div>
+              )}
 
               {/* ACTION BUTTONS */}
               <div className="mt-8 space-y-2">

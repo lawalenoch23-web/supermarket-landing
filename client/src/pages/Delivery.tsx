@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { 
   Package, Phone, MapPin, User, Clock, CheckCircle2, 
-  Truck, AlertCircle, LogOut, ChevronRight, RefreshCw, X, DollarSign 
+  Truck, AlertCircle, LogOut, RefreshCw, X, DollarSign 
 } from 'lucide-react';
 
 export default function Delivery() {
@@ -41,7 +41,7 @@ export default function Delivery() {
     }
   }, []);
 
-  // --- FETCH ORDERS ---
+  // --- FETCH ORDERS (ONLY DELIVERY ORDERS - address NOT null) ---
   const fetchOrders = async () => {
     setLoading(true);
     try {
@@ -49,6 +49,7 @@ export default function Delivery() {
         .from('orders')
         .select('*')
         .eq('store_name', "Grandpa's Supermart")
+        .not('address', 'is', null)  // Only get delivery orders
         .neq('status', 'DONE')
         .order('created_at', { ascending: false });
 
@@ -84,26 +85,41 @@ export default function Delivery() {
     }
   }, [isAuthenticated]);
 
-  // --- AUTHENTICATION HANDLERS ---
-  const handleLogin = (e: React.FormEvent) => {
+  // --- DATABASE-DRIVEN AUTHENTICATION ---
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoggingIn(true);
     setLoginError('');
 
-    setTimeout(() => {
-      const correctPassword = import.meta.env.VITE_DELIVERY_PASSWORD || 'delivery123';
+    try {
+      // Fetch delivery password from database
+      const { data: authData, error } = await supabase
+        .from('store_settings')
+        .select('delivery_password')
+        .eq('id', 1)
+        .single();
 
-      if (passwordInput === correctPassword) {
-        localStorage.setItem('delivery_session', 'authenticated');
-        localStorage.setItem('delivery_session_time', new Date().getTime().toString());
-        setIsAuthenticated(true);
-        setPasswordInput('');
-      } else {
-        setLoginError('Incorrect access code. Please try again.');
-        setPasswordInput('');
-      }
+      if (error) throw error;
+
+      const dbPassword = authData?.delivery_password;
+
+      setTimeout(() => {
+        if (passwordInput === dbPassword) {
+          localStorage.setItem('delivery_session', 'authenticated');
+          localStorage.setItem('delivery_session_time', new Date().getTime().toString());
+          setIsAuthenticated(true);
+          setPasswordInput('');
+        } else {
+          setLoginError('Incorrect access code. Please try again.');
+          setPasswordInput('');
+        }
+        setIsLoggingIn(false);
+      }, 500);
+    } catch (error) {
+      console.error('Login error:', error);
+      setLoginError('Login failed. Please contact the Store Manager.');
       setIsLoggingIn(false);
-    }, 500);
+    }
   };
 
   const handleLogout = () => {
@@ -240,7 +256,7 @@ export default function Delivery() {
                   <div>
                     <h3 className="text-sm font-black text-white uppercase mb-2">Reset Access Code</h3>
                     <p className="text-xs text-zinc-400 leading-relaxed">
-                      Please contact the Store Manager to reset your delivery access code. They will provide you with a new code to access the delivery portal.
+                      Please contact the Store Manager to reset your delivery access code. They can update your code from the Settings panel in the Manager Portal.
                     </p>
                   </div>
                 </div>
@@ -339,8 +355,8 @@ export default function Delivery() {
               key={order.id}
               className="bg-zinc-950/50 backdrop-blur-md border border-zinc-900 rounded-3xl p-5 space-y-4 hover:border-zinc-800 transition-all"
             >
-
-              {showFeeCalculator && (
+              {/* FEE CALCULATOR MODAL */}
+              {showFeeCalculator === order.id && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
                   <div className="bg-zinc-950 border border-zinc-800 w-full max-w-md rounded-2xl shadow-2xl p-6">
                     <div className="flex justify-between items-center mb-6">
@@ -413,9 +429,6 @@ export default function Delivery() {
                             return;
                           }
 
-                          const order = orders.find(o => o.id === showFeeCalculator);
-                          if (!order) return;
-
                           const productsTotal = order.total_price || 0;
                           const deliveryFee = parseFloat(feeInput);
                           const finalTotal = productsTotal + deliveryFee;
@@ -427,7 +440,7 @@ export default function Delivery() {
                               delivery_fee: deliveryFee,
                               final_total: finalTotal
                             })
-                            .eq('id', showFeeCalculator);
+                            .eq('id', order.id);
 
                           if (error) {
                             alert('Failed to update: ' + error.message);
@@ -448,8 +461,8 @@ export default function Delivery() {
                 </div>
               )}
 
-              
-              {order.address !== "PICK-UP ONLY" && order.delivery_fee === 0 && (
+              {/* Calculate Fee Button */}
+              {order.delivery_fee === 0 && (
                 <button
                   onClick={() => setShowFeeCalculator(order.id)}
                   className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-2xl font-black uppercase text-sm tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all"
@@ -459,7 +472,7 @@ export default function Delivery() {
                 </button>
               )}
 
-            
+              {/* Delivery Fee Display */}
               {order.delivery_fee > 0 && (
                 <div className="bg-green-500/10 border border-green-500/30 p-3 rounded-xl">
                   <div className="flex justify-between items-center mb-2">
@@ -473,7 +486,6 @@ export default function Delivery() {
                 </div>
               )}
 
-              
               {/* Order Header */}
               <div className="flex items-start justify-between">
                 <div>
@@ -493,7 +505,7 @@ export default function Delivery() {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-zinc-500 font-bold uppercase mb-1">Total</p>
+                  <p className="text-xs text-zinc-500 font-bold uppercase mb-1">Products</p>
                   <p className="text-lg font-black text-orange-500">₦{order.total_price?.toLocaleString()}</p>
                 </div>
               </div>
@@ -511,23 +523,18 @@ export default function Delivery() {
                   </div>
                 </div>
 
-                {order.address && order.address !== "PICK-UP ONLY" && (
-                  <div className="flex items-start gap-2">
-                    <MapPin size={16} className="text-green-500 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-xs text-zinc-500 font-bold uppercase mb-1">Delivery Address</p>
-                      <p className="text-sm font-medium leading-relaxed">{order.address}</p>
-                    </div>
+                <div className="flex items-start gap-2">
+                  <MapPin size={16} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs text-zinc-500 font-bold uppercase mb-1">Delivery Address</p>
+                    <p className="text-sm font-medium leading-relaxed">{order.address}</p>
+                    {order.payment_method && (
+                      <p className="text-xs text-zinc-500 mt-2">
+                        Payment: {order.payment_method === 'cash' ? '💵 Cash' : '📱 Transfer'} on delivery
+                      </p>
+                    )}
                   </div>
-                )}
-
-                {order.address === "PICK-UP ONLY" && (
-                  <div className="bg-orange-500/10 border border-orange-500/20 p-3 rounded-xl">
-                    <p className="text-xs text-orange-500 font-black uppercase text-center">
-                      ⚠️ PICK-UP ONLY - No Delivery Needed
-                    </p>
-                  </div>
-                )}
+                </div>
               </div>
 
               {/* Items Summary */}
@@ -537,58 +544,66 @@ export default function Delivery() {
               </div>
 
               {/* Action Buttons */}
-              {order.address !== "PICK-UP ONLY" && (
-                <div className="space-y-2">
-                  {/* Call Customer Button */}
-                  {order.phone_number && (
-                    <a
-                      href={`tel:${order.phone_number}`}
-                      className="w-full bg-green-600 hover:bg-green-500 border border-green-500 text-white py-4 rounded-2xl font-black uppercase text-sm tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-green-500/20"
+              <div className="space-y-2">
+                {/* Call Customer Button */}
+                {order.phone_number && (
+                  <a
+                    href={`tel:${order.phone_number}`}
+                    className="w-full bg-green-600 hover:bg-green-500 border border-green-500 text-white py-4 rounded-2xl font-black uppercase text-sm tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-green-500/20"
+                  >
+                    <Phone size={18} />
+                    Call {order.customer_name.split(' ')[0]}
+                  </a>
+                )}
+
+                {/* Status Update Buttons */}
+                <div className="grid grid-cols-3 gap-2">
+                  {order.status !== 'READY' && (
+                    <button
+                      onClick={() => updateOrderStatus(order.id, 'READY')}
+                      disabled={updating === order.id}
+                      className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 text-white py-4 rounded-xl font-black uppercase text-xs tracking-wider flex flex-col items-center justify-center gap-1 active:scale-95 transition-all disabled:opacity-50"
                     >
-                      <Phone size={18} />
-                      Call {order.customer_name.split(' ')[0]}
-                    </a>
+                      <Package size={18} />
+                      <span>Pick Up</span>
+                    </button>
                   )}
 
-                  {/* Status Update Buttons */}
-                  <div className="grid grid-cols-3 gap-2">
-                    {order.status !== 'READY' && (
-                      <button
-                        onClick={() => updateOrderStatus(order.id, 'READY')}
-                        disabled={updating === order.id}
-                        className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 text-white py-4 rounded-xl font-black uppercase text-xs tracking-wider flex flex-col items-center justify-center gap-1 active:scale-95 transition-all disabled:opacity-50"
-                      >
-                        <Package size={18} />
-                        <span>Pick Up</span>
-                      </button>
-                    )}
-
-                    {order.status !== 'SHIPPED' && (
-                      <button
-                        onClick={() => updateOrderStatus(order.id, 'SHIPPED')}
-                        disabled={updating === order.id}
-                        className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-zinc-800 text-white py-4 rounded-xl font-black uppercase text-xs tracking-wider flex flex-col items-center justify-center gap-1 active:scale-95 transition-all disabled:opacity-50"
-                      >
-                        <Truck size={18} />
-                        <span>On Way</span>
-                      </button>
-                    )}
-
+                  {order.status !== 'SHIPPED' && (
                     <button
-                      onClick={() => updateOrderStatus(order.id, 'DONE')}
+                      onClick={() => updateOrderStatus(order.id, 'SHIPPED')}
                       disabled={updating === order.id}
-                      className="bg-green-600 hover:bg-green-500 disabled:bg-zinc-800 text-white py-4 rounded-xl font-black uppercase text-xs tracking-wider flex flex-col items-center justify-center gap-1 active:scale-95 transition-all disabled:opacity-50"
+                      className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-zinc-800 text-white py-4 rounded-xl font-black uppercase text-xs tracking-wider flex flex-col items-center justify-center gap-1 active:scale-95 transition-all disabled:opacity-50"
                     >
-                      <CheckCircle2 size={18} />
-                      <span>Delivered</span>
+                      <Truck size={18} />
+                      <span>On Way</span>
                     </button>
-                  </div>
+                  )}
+
+                  <button
+                    onClick={() => updateOrderStatus(order.id, 'DONE')}
+                    disabled={updating === order.id}
+                    className="bg-green-600 hover:bg-green-500 disabled:bg-zinc-800 text-white py-4 rounded-xl font-black uppercase text-xs tracking-wider flex flex-col items-center justify-center gap-1 active:scale-95 transition-all disabled:opacity-50"
+                  >
+                    <CheckCircle2 size={18} />
+                    <span>Delivered</span>
+                  </button>
                 </div>
-              )}
+              </div>
             </div>
           ))
         )}
       </div>
+
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
     </div>
   );
 }

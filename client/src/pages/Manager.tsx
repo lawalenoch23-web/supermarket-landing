@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { 
   Trash2, LayoutDashboard, PlusCircle, 
-  Save, Clock, MapPin, Calendar, PackagePlus, Edit3, DollarSign, ShoppingBag, AlertTriangle, Download, Upload, ChevronUp, X
+  Save, Clock, MapPin, Calendar, PackagePlus, Edit3, DollarSign, ShoppingBag, AlertTriangle, Download, Upload, ChevronUp, X, Filter, Package
 } from 'lucide-react';
 import SettingsTab from '../components/SettingsTab';
 
@@ -25,18 +25,24 @@ export default function Manager() {
   const [newPrice, setNewPrice] = useState('');
   const [newCategory, setNewCategory] = useState('');
   const [newImage, setNewImage] = useState('');
+  const [newStock, setNewStock] = useState('10');
   const [showAddresses, setShowAddresses] = useState(false);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [dateFilter, setDateFilter] = useState('ALL_TIME');
+  const [orderTypeFilter, setOrderTypeFilter] = useState<'PICKUP' | 'DELIVERY' | 'ALL'>('PICKUP');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('DEFAULT');
   const [showInventory, setShowInventory] = useState(false);
+  const [showCategoryBreakdown, setShowCategoryBreakdown] = useState(false);
   const [newProduct, setNewProduct] = useState({
     name: '',
     price: '',
     image_url: '',
-    category: ''
+    category: '',
+    stock: '10'
   });
+  const [deliveryFeePerKm, setDeliveryFeePerKm] = useState('150');
+  const [isSavingFee, setIsSavingFee] = useState(false);
 
   // --- 2. ANALYTICS ---
   const filteredOrders = orders.filter(order => {
@@ -55,10 +61,43 @@ export default function Manager() {
       matchesDate = (now.getTime() - orderDate.getTime()) <= 365 * 24 * 60 * 60 * 1000;
     }
 
-    return matchesStatus && matchesDate;
+    // Order type filtering
+    let matchesOrderType = true;
+    if (orderTypeFilter === 'PICKUP') {
+      matchesOrderType = !order.address || order.address === null;
+    } else if (orderTypeFilter === 'DELIVERY') {
+      matchesOrderType = order.address && order.address !== null;
+    }
+
+    return matchesStatus && matchesDate && matchesOrderType;
   });
 
   const totalRevenue = filteredOrders.reduce((sum, order) => sum + (order.total_price || 0), 0);
+
+  // Calculate total stock value (price × stock for all products)
+  const totalStockValue = products.reduce((sum, product) => {
+    const stock = product.stock || 0;
+    const price = product.price || 0;
+    return sum + (stock * price);
+  }, 0);
+
+  // Calculate total items in stock
+  const totalStockItems = products.reduce((sum, product) => sum + (product.stock || 0), 0);
+
+  // Calculate stock value by category
+  const stockByCategory = categories.map(category => {
+    const categoryProducts = products.filter(p => p.category === category.name);
+    const totalValue = categoryProducts.reduce((sum, p) => sum + ((p.stock || 0) * (p.price || 0)), 0);
+    const totalItems = categoryProducts.reduce((sum, p) => sum + (p.stock || 0), 0);
+    const productCount = categoryProducts.length;
+
+    return {
+      name: category.name,
+      totalValue,
+      totalItems,
+      productCount
+    };
+  }).sort((a, b) => b.totalValue - a.totalValue); // Sort by value descending
 
   // --- 3. DATA FETCH ---
   const fetchManagerData = async () => {
@@ -75,6 +114,9 @@ export default function Manager() {
 
       const { data: pData } = await supabase.from('products').select('*').order('created_at', { ascending: false });
       if (pData) setProducts(pData);
+
+      const { data: sData } = await supabase.from('store_settings').select('delivery_fee_per_km').eq('id', 1).single();
+      if (sData) setDeliveryFeePerKm(String(sData.delivery_fee_per_km || 150));
     } catch (err) {
       console.error("Sync Error:", err);
     } finally {
@@ -183,6 +225,25 @@ export default function Manager() {
     alert("Image uploaded successfully!");
   };
 
+  // --- DELIVERY FEE UPDATE ---
+  const handleUpdateDeliveryFee = async () => {
+    setIsSavingFee(true);
+    try {
+      const { error } = await supabase
+        .from('store_settings')
+        .update({ delivery_fee_per_km: parseFloat(deliveryFeePerKm) })
+        .eq('id', 1);
+
+      if (error) throw error;
+      alert('Delivery fee updated successfully!');
+    } catch (err) {
+      console.error('Error updating delivery fee:', err);
+      alert('Failed to update delivery fee');
+    } finally {
+      setIsSavingFee(false);
+    }
+  };
+
   // --- 4. ACTIONS ---
   const handleAddCategory = async () => {
     if (!newCategoryName) return;
@@ -207,7 +268,8 @@ export default function Manager() {
       name: newName.toUpperCase(),
       price: parseFloat(newPrice),
       category: newCategory,
-      image: newProduct.image_url
+      image: newProduct.image_url,
+      stock: parseInt(newStock) || 10
     }]);
 
     if (error) {
@@ -217,7 +279,8 @@ export default function Manager() {
       setNewName(''); 
       setNewPrice(''); 
       setNewCategory('');
-      setNewProduct({ name: '', price: '', image_url: '', category: '' });
+      setNewStock('10');
+      setNewProduct({ name: '', price: '', image_url: '', category: '', stock: '10' });
       alert("Product added successfully!");
       fetchManagerData();
     }
@@ -227,6 +290,14 @@ export default function Manager() {
     const p = prompt("Enter new price:");
     if (p && !isNaN(parseFloat(p))) {
       const { error } = await supabase.from('products').update({ price: parseFloat(p) }).eq('id', id);
+      if (!error) fetchManagerData();
+    }
+  };
+
+  const updateStock = async (id: number) => {
+    const s = prompt("Enter new stock quantity:");
+    if (s && !isNaN(parseInt(s))) {
+      const { error } = await supabase.from('products').update({ stock: parseInt(s) }).eq('id', id);
       if (!error) fetchManagerData();
     }
   };
@@ -277,7 +348,7 @@ export default function Manager() {
 
   const exportCSV = () => {
     const headers = "Date,Customer,Phone,Items,Total,Address\n";
-    const rows = orders.map(o => `${o.created_at},${o.customer_name},"${o.phone_number || 'N/A'}","${o.items}",${o.total_price},"${o.address}"`).join("\n");
+    const rows = orders.map(o => `${o.created_at},${o.customer_name},"${o.phone_number || 'N/A'}","${o.items}",${o.total_price},"${o.address || 'PICKUP'}"`).join("\n");
     const blob = new Blob([headers + rows], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -487,52 +558,119 @@ export default function Manager() {
 
             {/* CONDITIONAL CONTENT */}
             {activeTab === 'settings' ? (
-              <SettingsTab onSettingsSaved={fetchManagerData} />
+              <div className="space-y-6">
+                <SettingsTab onSettingsSaved={fetchManagerData} />
+
+                {/* DELIVERY FEE SETTINGS */}
+                <div className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl">
+                  <h3 className="text-xs font-black uppercase text-orange-500 mb-4 flex items-center gap-2">
+                    <DollarSign size={12}/> Delivery Fee Settings
+                  </h3>
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">
+                        Fee Per Kilometer (₦)
+                      </label>
+                      <input 
+                        type="number"
+                        value={deliveryFeePerKm} 
+                        onChange={(e) => setDeliveryFeePerKm(e.target.value)} 
+                        placeholder="150" 
+                        className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-black uppercase outline-none focus:border-orange-500" 
+                      />
+                    </div>
+                    <button 
+                      onClick={handleUpdateDeliveryFee}
+                      disabled={isSavingFee}
+                      className="bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 text-white px-6 rounded-xl text-xs font-black uppercase transition-all self-end"
+                    >
+                      {isSavingFee ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-zinc-600 mt-3 italic">
+                    This rate is used to calculate estimated delivery fees shown to customers during checkout.
+                  </p>
+                </div>
+              </div>
             ) : (
               <>
-                {/* FILTERS */}
-                <div className="space-y-3 mb-6">
-                  <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
-                    {['ALL', 'PENDING', 'PREPARING', 'READY', 'DONE'].map((status) => (
-                      <button
-                        key={status}
-                        onClick={() => setFilterStatus(status)}
-                        className={`px-4 py-2 rounded-full text-xs font-black transition-all whitespace-nowrap ${
-                          filterStatus === status 
-                            ? 'bg-orange-500 text-black' 
-                            : 'bg-zinc-900 text-zinc-500 hover:bg-zinc-800'
-                        }`}
-                      >
-                        {status}
-                      </button>
-                    ))}
+                {/* FILTERS - REDESIGNED */}
+                <div className="bg-zinc-950/50 border border-zinc-900 rounded-2xl p-4 mb-6">
+                  {/* ORDER TYPE FILTER - Primary */}
+                  <div className="mb-4 pb-4 border-b border-zinc-800/50">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Filter size={14} className="text-orange-500" />
+                      <span className="text-[10px] font-black text-zinc-600 uppercase tracking-wider">Order Type</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['PICKUP', 'DELIVERY', 'ALL'].map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => setOrderTypeFilter(type as 'PICKUP' | 'DELIVERY' | 'ALL')}
+                          className={`py-3 rounded-xl text-xs font-black transition-all ${
+                            orderTypeFilter === type 
+                              ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/20' 
+                              : 'bg-zinc-900/50 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-400'
+                          }`}
+                        >
+                          {type === 'PICKUP' ? '📦 PICKUP' : type === 'DELIVERY' ? '🚚 DELIVERY' : '🔍 ALL'}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
-                  <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar border-t border-zinc-800/30 pt-3">
-                    {[
-                      { id: '24H', label: 'LAST 24 HOURS' },
-                      { id: 'WEEK', label: 'LAST WEEK' },
-                      { id: 'MONTH', label: 'LAST MONTH' },
-                      { id: 'YEAR', label: 'LAST YEAR' },
-                      { id: 'ALL_TIME', label: 'ALL TIME' }
-                    ].map((range) => (
-                      <button
-                        key={range.id}
-                        onClick={() => setDateFilter(range.id)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
-                          dateFilter === range.id 
-                            ? 'bg-white text-black' 
-                            : 'bg-zinc-900/50 text-zinc-600 hover:text-zinc-400'
-                        }`}
-                      >
-                        {range.label}
-                      </button>
-                    ))}
+                  {/* STATUS & DATE - Secondary Filters */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Status Filter */}
+                    <div>
+                      <span className="text-[10px] font-black text-zinc-600 uppercase tracking-wider mb-2 block">Status</span>
+                      <div className="flex flex-wrap gap-2">
+                        {['ALL', 'PENDING', 'PREPARING', 'READY', 'DONE'].map((status) => (
+                          <button
+                            key={status}
+                            onClick={() => setFilterStatus(status)}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${
+                              filterStatus === status 
+                                ? 'bg-white text-black' 
+                                : 'bg-zinc-900/50 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400'
+                            }`}
+                          >
+                            {status}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Date Filter */}
+                    <div>
+                      <span className="text-[10px] font-black text-zinc-600 uppercase tracking-wider mb-2 block">Time Period</span>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { id: '24H', label: '24H' },
+                          { id: 'WEEK', label: 'WEEK' },
+                          { id: 'MONTH', label: 'MONTH' },
+                          { id: 'YEAR', label: 'YEAR' },
+                          { id: 'ALL_TIME', label: 'ALL' }
+                        ].map((range) => (
+                          <button
+                            key={range.id}
+                            onClick={() => setDateFilter(range.id)}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${
+                              dateFilter === range.id 
+                                ? 'bg-white text-black' 
+                                : 'bg-zinc-900/50 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400'
+                            }`}
+                          >
+                            {range.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 {/* STATS */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
                   <div className="bg-zinc-950 border border-zinc-900 p-5 rounded-2xl flex items-center justify-between">
                     <div>
                       <p className="text-xs font-black text-zinc-500 uppercase mb-1">Filtered Revenue</p>
@@ -547,7 +685,91 @@ export default function Manager() {
                     </div>
                     <ShoppingBag className="text-zinc-800" size={36} />
                   </div>
+                  <div 
+                    className="bg-zinc-950 border border-zinc-900 p-5 rounded-2xl flex items-center justify-between cursor-pointer hover:border-green-500/30 transition-all group"
+                    onClick={() => setShowCategoryBreakdown(!showCategoryBreakdown)}
+                  >
+                    <div>
+                      <p className="text-xs font-black text-zinc-500 uppercase mb-1 group-hover:text-green-500 transition-colors">Stock Value</p>
+                      <p className="text-2xl md:text-3xl font-black text-green-500 italic">₦{totalStockValue.toLocaleString()}</p>
+                      <p className="text-[9px] text-zinc-600 font-bold mt-1 uppercase">Click for breakdown</p>
+                    </div>
+                    <PackagePlus className="text-zinc-800 group-hover:text-green-500/20 transition-colors" size={36} />
+                  </div>
+                  <div className="bg-zinc-950 border border-zinc-900 p-5 rounded-2xl flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-black text-zinc-500 uppercase mb-1">Total Items</p>
+                      <p className="text-2xl md:text-3xl font-black text-blue-500 italic">{totalStockItems}</p>
+                    </div>
+                    <Package className="text-zinc-800" size={36} />
+                  </div>
                 </div>
+
+                {/* CATEGORY BREAKDOWN - EXPANDABLE */}
+                {showCategoryBreakdown && (
+                  <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-6 mb-6 animate-in slide-in-from-top-2 fade-in">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-black uppercase text-green-500 flex items-center gap-2">
+                        <PackagePlus size={16} /> Stock Value by Category
+                      </h3>
+                      <button 
+                        onClick={() => setShowCategoryBreakdown(false)}
+                        className="text-zinc-600 hover:text-white transition-colors"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {stockByCategory.map((cat, idx) => (
+                        <div 
+                          key={cat.name}
+                          className="bg-black/40 border border-zinc-900 p-4 rounded-xl hover:border-green-500/30 transition-all group"
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <p className="text-xs font-black uppercase text-white mb-1">{cat.name}</p>
+                              <p className="text-[9px] text-zinc-600 font-bold uppercase">{cat.productCount} Products</p>
+                            </div>
+                            <div className="bg-green-500/10 px-2 py-1 rounded-lg">
+                              <p className="text-[9px] font-black text-green-500">#{idx + 1}</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-[9px] text-zinc-500 font-bold uppercase">Stock Value</span>
+                              <span className="text-lg font-black text-green-500">₦{cat.totalValue.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between items-center pt-2 border-t border-zinc-900">
+                              <span className="text-[9px] text-zinc-500 font-bold uppercase">Items in Stock</span>
+                              <span className="text-sm font-black text-blue-500">{cat.totalItems}</span>
+                            </div>
+                          </div>
+
+                          {/* Progress bar showing percentage of total value */}
+                          <div className="mt-3">
+                            <div className="h-1 bg-zinc-900 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-gradient-to-r from-green-500 to-green-400 transition-all duration-500"
+                                style={{ width: `${totalStockValue > 0 ? (cat.totalValue / totalStockValue) * 100 : 0}%` }}
+                              />
+                            </div>
+                            <p className="text-[8px] text-zinc-600 font-bold mt-1 text-right">
+                              {totalStockValue > 0 ? ((cat.totalValue / totalStockValue) * 100).toFixed(1) : 0}% of total
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {stockByCategory.length === 0 && (
+                      <div className="text-center py-8">
+                        <p className="text-zinc-600 text-xs font-bold uppercase">No categories with stock</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </header>
@@ -647,7 +869,7 @@ export default function Manager() {
                 <section className="bg-zinc-950 border border-zinc-900 rounded-2xl overflow-hidden">
                   <div className="p-6 border-b border-zinc-900 bg-zinc-900/20">
                     <h2 className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
-                      <Clock size={12} className="text-orange-500"/> Recent Sales
+                      <Clock size={12} className="text-orange-500"/> Recent Sales ({orderTypeFilter})
                     </h2>
                   </div>
                   <div className="divide-y divide-zinc-900 max-h-[600px] overflow-y-auto custom-scrollbar">
@@ -658,6 +880,8 @@ export default function Manager() {
                     ) : (
                       filteredOrders.map(order => {
                         const time = formatTime(order.created_at);
+                        const isPickup = !order.address || order.address === null;
+
                         return (
                           <div key={order.id} className="p-5 hover:bg-white/5 transition-colors group">
                             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-3">
@@ -673,6 +897,12 @@ export default function Manager() {
                                   {order.phone_number && (
                                     <p className="text-xs text-green-500 font-bold mt-1">📞 {order.phone_number}</p>
                                   )}
+                                  {/* Pickup/Delivery Badge */}
+                                  <span className={`inline-block mt-2 px-2 py-1 rounded-lg text-[9px] font-black uppercase ${
+                                    isPickup ? 'bg-blue-600/20 text-blue-500' : 'bg-green-600/20 text-green-500'
+                                  }`}>
+                                    {isPickup ? '📦 PICKUP' : '🚚 DELIVERY'}
+                                  </span>
                                 </div>
                               </div>
                               <select 
@@ -699,43 +929,43 @@ export default function Manager() {
                                 <p className="text-lg font-black italic text-orange-500">₦{order.total_price?.toLocaleString()}</p>
                               </div>
                             </div>
-                            {showAddresses && order.address !== "PICK-UP ONLY" && (
-                                  <div className="mt-3 space-y-2">
-                                    <div className="flex items-start gap-2 p-3 bg-orange-500/5 border border-orange-500/10 rounded-xl">
-                                      <MapPin size={12} className="text-orange-500 shrink-0 mt-0.5" />
+                            {showAddresses && !isPickup && (
+                              <div className="mt-3 space-y-2">
+                                <div className="flex items-start gap-2 p-3 bg-orange-500/5 border border-orange-500/10 rounded-xl">
+                                  <MapPin size={12} className="text-orange-500 shrink-0 mt-0.5" />
+                                  <div>
+                                    <p className="text-xs font-black text-orange-500 uppercase tracking-widest mb-1">Delivery</p>
+                                    <p className="text-xs font-bold italic leading-tight">{order.address}</p>
+                                    {order.payment_method && (
+                                      <p className="text-xs text-zinc-500 mt-1">
+                                        Payment: {order.payment_method === 'cash' ? '💵 Cash' : '📱 Transfer'} on delivery
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {order.delivery_fee > 0 && (
+                                  <div className="bg-green-500/10 border border-green-500/30 p-3 rounded-xl">
+                                    <div className="flex justify-between items-center">
                                       <div>
-                                        <p className="text-xs font-black text-orange-500 uppercase tracking-widest mb-1">Delivery</p>
-                                        <p className="text-xs font-bold italic leading-tight">{order.address}</p>
-                                        {order.payment_method && (
-                                          <p className="text-xs text-zinc-500 mt-1">
-                                            Payment: {order.payment_method === 'cash' ? '💵 Cash' : '📱 Transfer'} on delivery
-                                          </p>
-                                        )}
+                                        <p className="text-xs font-black text-green-400 uppercase">Delivery Fee Collected</p>
+                                        <p className="text-xs text-zinc-500 mt-1">{order.delivery_distance}km traveled</p>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="text-sm font-black text-green-500">₦{order.delivery_fee.toLocaleString()}</p>
+                                        <p className="text-xs text-zinc-500">Final: ₦{(order.final_total || order.total_price).toLocaleString()}</p>
                                       </div>
                                     </div>
+                                  </div>
+                                )}
 
-                                    {order.delivery_fee > 0 && (
-                                      <div className="bg-green-500/10 border border-green-500/30 p-3 rounded-xl">
-                                        <div className="flex justify-between items-center">
-                                          <div>
-                                            <p className="text-xs font-black text-green-400 uppercase">Delivery Fee Collected</p>
-                                            <p className="text-xs text-zinc-500 mt-1">{order.delivery_distance}km traveled</p>
-                                          </div>
-                                          <div className="text-right">
-                                            <p className="text-sm font-black text-green-500">₦{order.delivery_fee.toLocaleString()}</p>
-                                            <p className="text-xs text-zinc-500">Final: ₦{(order.final_total || order.total_price).toLocaleString()}</p>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {order.delivery_fee === 0 && order.status !== 'DONE' && (
-                                      <div className="bg-yellow-500/10 border border-yellow-500/30 p-2 rounded-lg">
-                                        <p className="text-xs text-yellow-500 font-bold text-center">
-                                          ⏳ Delivery fee pending calculation
-                                        </p>
-                                      </div>
-                                     )}
+                                {order.delivery_fee === 0 && order.status !== 'DONE' && (
+                                  <div className="bg-yellow-500/10 border border-yellow-500/30 p-2 rounded-lg">
+                                    <p className="text-xs text-yellow-500 font-bold text-center">
+                                      ⏳ Delivery fee pending calculation
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -785,6 +1015,7 @@ export default function Manager() {
                   <option value="DEFAULT">SORT BY</option>
                   <option value="PRICE_LOW">PRICE: LOW TO HIGH</option>
                   <option value="PRICE_HIGH">PRICE: HIGH TO LOW</option>
+                  <option value="STOCK_LOW">STOCK: LOW TO HIGH</option>
                   <option value="CATEGORY">CATEGORY</option>
                 </select>
               </div>
@@ -798,32 +1029,57 @@ export default function Manager() {
                   .sort((a, b) => {
                     if (sortBy === 'PRICE_LOW') return a.price - b.price;
                     if (sortBy === 'PRICE_HIGH') return b.price - a.price;
+                    if (sortBy === 'STOCK_LOW') return (a.stock || 0) - (b.stock || 0);
                     if (sortBy === 'CATEGORY') return (a.category || '').localeCompare(b.category || '');
                     return 0;
                   })
-                  .map(p => (
-                    <div key={p.id} className="bg-black/40 p-2 rounded-lg border border-zinc-900 flex flex-col gap-1.5 group hover:border-orange-500/50 transition-all">
-                      <div className="relative group/img aspect-square overflow-hidden rounded-md">
-                        <img 
-                          src={p.image || p.image_url || 'https://via.placeholder.com/400'} 
-                          className="w-full h-full object-cover bg-zinc-900"
-                          onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400?text=Error'; }}
-                        />
-                        <input 
-                          type="file" accept="image/*" id={`replace-${p.id}`} className="hidden" 
-                          onChange={(e) => handleReplaceImageUrl(p.id, e)} 
-                        />
-                        <label htmlFor={`replace-${p.id}`} className="absolute inset-0 bg-black/80 opacity-0 group-hover/img:opacity-100 transition-all flex flex-col items-center justify-center cursor-pointer text-[8px] font-black">
-                          <Upload size={12} className="mb-1" />
-                          UPDATE
-                        </label>
-                      </div>
+                  .map(p => {
+                    const stock = p.stock || 0;
+                    const isLowStock = stock > 0 && stock < 5;
+                    const isSoldOut = stock <= 0;
 
-                      <div className="min-w-0 px-0.5">
-                        <p className="text-[9px] font-black uppercase truncate leading-tight mb-0.5">{p.name}</p>
-                        <div className="flex justify-between items-center">
-                          <p className="text-[9px] text-orange-500 font-bold">₦{p.price.toLocaleString()}</p>
-                          <div className="flex gap-1.5">
+                    return (
+                      <div key={p.id} className={`bg-black/40 p-2 rounded-lg border flex flex-col gap-1.5 group hover:border-orange-500/50 transition-all ${
+                        isSoldOut ? 'border-red-900/50' : isLowStock ? 'border-yellow-900/50' : 'border-zinc-900'
+                      }`}>
+                        <div className="relative group/img aspect-square overflow-hidden rounded-md">
+                          <img 
+                            src={p.image || p.image_url || 'https://via.placeholder.com/400'} 
+                            className="w-full h-full object-cover bg-zinc-900"
+                            onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400?text=Error'; }}
+                          />
+
+                          {/* Stock badge */}
+                          <div className={`absolute top-1 left-1 px-2 py-1 rounded-md text-[8px] font-black ${
+                            isSoldOut ? 'bg-red-600 text-white' :
+                            isLowStock ? 'bg-yellow-500 text-black' :
+                            'bg-green-600 text-white'
+                          }`}>
+                            {stock} IN STOCK
+                          </div>
+
+                          <input 
+                            type="file" accept="image/*" id={`replace-${p.id}`} className="hidden" 
+                            onChange={(e) => handleReplaceImageUrl(p.id, e)} 
+                          />
+                          <label htmlFor={`replace-${p.id}`} className="absolute inset-0 bg-black/80 opacity-0 group-hover/img:opacity-100 transition-all flex flex-col items-center justify-center cursor-pointer text-[8px] font-black">
+                            <Upload size={12} className="mb-1" />
+                            UPDATE
+                          </label>
+                        </div>
+
+                        <div className="min-w-0 px-0.5">
+                          <p className="text-[9px] font-black uppercase truncate leading-tight mb-0.5">{p.name}</p>
+                          <div className="flex justify-between items-center mb-1">
+                            <p className="text-[9px] text-orange-500 font-bold">₦{p.price.toLocaleString()}</p>
+                          </div>
+                          <div className="flex gap-1.5 justify-between">
+                            <button 
+                              onClick={() => updateStock(p.id)} 
+                              className="flex-1 bg-zinc-800 hover:bg-blue-600 text-white px-2 py-1 rounded text-[8px] font-black uppercase transition-colors"
+                            >
+                              Stock
+                            </button>
                             <button onClick={() => updatePrice(p.id)} className="text-zinc-600 hover:text-white transition-colors">
                               <Edit3 size={10}/>
                             </button>
@@ -833,8 +1089,8 @@ export default function Manager() {
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
               </div>
             </div>
 
@@ -855,6 +1111,13 @@ export default function Manager() {
                   onChange={e => setNewPrice(e.target.value)} 
                   className="bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:border-orange-500" 
                 />
+                <input 
+                  placeholder="STOCK" 
+                  type="number" 
+                  value={newStock} 
+                  onChange={e => setNewStock(e.target.value)} 
+                  className="bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:border-orange-500" 
+                />
                 <select 
                   value={newCategory} 
                   onChange={e => setNewCategory(e.target.value)} 
@@ -864,7 +1127,7 @@ export default function Manager() {
                   {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                 </select>
 
-                <div className="relative">
+                <div className="relative sm:col-span-2">
                   <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" id="new-product-modal" />
                   <label htmlFor="new-product-modal" className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase flex items-center justify-center gap-2 cursor-pointer hover:bg-zinc-800">
                     <Upload size={10} />

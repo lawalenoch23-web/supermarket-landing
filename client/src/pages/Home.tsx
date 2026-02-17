@@ -274,41 +274,25 @@ export default function Home() {
       alert('Receipt not ready. Please wait a moment and try again.');
       return;
     }
-
     try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-
+      // Brief wait so the hidden element is fully painted
+      await new Promise(resolve => setTimeout(resolve, 400));
       const canvas = await html2canvas(receiptElement, {
-        backgroundColor: '#111111',
-        scale: 2,
+        backgroundColor: '#0a0a0a',
+        scale: 3,
         logging: false,
         useCORS: true,
         allowTaint: true,
-        onclone: (_doc: Document, element: HTMLElement) => {
-          const allElements = element.querySelectorAll('*');
-          allElements.forEach((el) => {
-            const htmlEl = el as HTMLElement;
-            const computed = window.getComputedStyle(htmlEl);
-            const color = computed.color;
-            const bg = computed.backgroundColor;
-            const borderColor = computed.borderColor;
-            if (color && (color.includes('oklab') || color.includes('oklch'))) htmlEl.style.color = '#ffffff';
-            if (bg && (bg.includes('oklab') || bg.includes('oklch'))) htmlEl.style.backgroundColor = '#111111';
-            if (borderColor && (borderColor.includes('oklab') || borderColor.includes('oklch'))) htmlEl.style.borderColor = '#333333';
-            htmlEl.style.setProperty('--tw-ring-color', '#f97316');
-            htmlEl.style.setProperty('--tw-shadow-color', '#000000');
-          });
-        }
+        windowWidth: 480,
       });
-
       const link = document.createElement('a');
-      link.download = `receipt-order-${orderId}.png`;
+      link.download = `receipt-${orderId}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
       alert('✅ Receipt saved!');
     } catch (err) {
       console.error('Receipt save error:', err);
-      alert(`Could not save receipt automatically. Please take a screenshot instead.\n\nError: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Could not save receipt. Please screenshot it instead.\n\nError: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
@@ -322,139 +306,270 @@ export default function Home() {
     return matchesSearch && matchesCategory;
   });
 
-  // --- 13. SUCCESS VIEW WITH RECEIPT ---
+  // --- 13. SUCCESS VIEW — PROFESSIONAL RECEIPT ---
   if (orderStatus === 'success' && orderDetails) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-4 md:p-6 text-white">
-        <div className="max-w-2xl w-full">
-          <div ref={receiptRef} id="receipt-content" className="bg-[#111] border border-orange-500/20 p-8 md:p-12 rounded-3xl mb-6">
+    const mono = "'Courier New', Courier, monospace";
+    const barWidths = [2,1,3,1,2,4,1,2,1,3,2,1,4,1,2,1,3,2,1,2,4,1,3,1,2,1,2,3,1,4,2,1,2,1,3];
+    const barcodeNum = `${String(orderDetails.id).padStart(4,'0')}-${new Date(orderDetails.created_at).getTime().toString().slice(-8)}`;
+    const itemsList: string[] = orderDetails.items.split(', ');
 
-            <div className="bg-green-500 w-14 h-14 md:w-16 md:h-16 rounded-xl md:rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-green-500/40 shadow-lg">
-              <CheckCircle2 size={28} className="md:w-8 md:h-8" />
-            </div>
+    // The hidden receipt rendered off-screen — captured by html2canvas with 100% inline styles
+    const HiddenReceipt = () => (
+      <div ref={receiptRef} style={{
+        position: 'fixed', left: '-9999px', top: '0',
+        width: '480px', fontFamily: mono, color: '#ffffff',
+        background: '#0a0a0a',
+      }}>
+        {/* header */}
+        <div style={{ background: '#f97316', padding: '28px 32px 20px', textAlign: 'center' }}>
+          <div style={{ fontSize: '26px', fontWeight: '900', letterSpacing: '0.22em', textTransform: 'uppercase', color: '#000000', marginBottom: '4px' }}>
+            {orderDetails.store_name}
+          </div>
+          <div style={{ fontSize: '9px', fontWeight: '700', letterSpacing: '0.4em', textTransform: 'uppercase', color: 'rgba(0,0,0,0.6)' }}>
+            Official Purchase Receipt
+          </div>
+        </div>
 
-            <h2 className="text-3xl md:text-4xl font-black italic uppercase mb-2 text-center">ORDER CONFIRMED</h2>
-            <p className="text-orange-500 text-[9px] md:text-[10px] font-black uppercase mb-6 tracking-[0.3em] md:tracking-[0.4em] text-center">{orderDetails.store_name}</p>
+        {/* confirmed strip */}
+        <div style={{ background: '#161616', padding: '10px 32px', textAlign: 'center', borderBottom: '1px solid #222' }}>
+          <span style={{ fontSize: '10px', fontWeight: '900', letterSpacing: '0.4em', textTransform: 'uppercase', color: '#22c55e' }}>
+            ✓ &nbsp; ORDER CONFIRMED &nbsp; ✓
+          </span>
+        </div>
 
-            {/* Order ID */}
-            <div className="bg-zinc-900 border border-zinc-800 p-5 md:p-6 rounded-2xl mb-4">
-              <p className="text-zinc-500 text-[10px] md:text-[11px] uppercase font-black mb-2 text-center">Order ID</p>
-              <p className="text-3xl md:text-4xl font-black text-center">#{orderId}</p>
-            </div>
+        {/* body */}
+        <div style={{ background: '#111111', padding: '28px 32px', borderLeft: '1px solid #1f1f1f', borderRight: '1px solid #1f1f1f' }}>
 
-            {/* ✅ Date & Time stamp — clearly visible on receipt */}
-            <div className="bg-zinc-900/60 border border-zinc-800 px-4 py-3 rounded-xl mb-6 text-center">
-              <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mb-1">Order Placed</p>
-              <p className="text-sm font-black text-white">{formatOrderDateTime(orderDetails.created_at)}</p>
-            </div>
-
-            {/* Customer Info */}
-            <div className="bg-black/40 border border-zinc-900 p-4 rounded-xl mb-6">
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <p className="text-zinc-600 font-bold uppercase text-[9px]">Customer</p>
-                  <p className="font-black">{orderDetails.customer_name}</p>
-                </div>
-                <div>
-                  <p className="text-zinc-600 font-bold uppercase text-[9px]">Phone</p>
-                  <p className="font-black">{orderDetails.phone_number}</p>
-                </div>
-              </div>
-              {orderDetails.address && (
-                <div className="mt-3 pt-3 border-t border-zinc-900">
-                  <p className="text-zinc-600 font-bold uppercase text-[9px] mb-1">Delivery Address</p>
-                  <p className="text-xs font-bold">{orderDetails.address}</p>
-                  <p className="text-[9px] text-zinc-500 mt-1">
-                    Payment: {orderDetails.payment_method === 'cash' ? '💵 Cash' : '📱 Transfer'} on delivery
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Items Ordered */}
-            <div className="bg-black/40 border border-zinc-900 p-4 rounded-xl mb-6">
-              <p className="text-zinc-600 font-bold uppercase text-[9px] mb-3">Items Ordered</p>
-              <div className="space-y-2">
-                {orderDetails.items.split(', ').map((item: string, idx: number) => (
-                  <div key={idx} className="flex items-center gap-2 text-xs">
-                    <div className="w-1.5 h-1.5 bg-orange-500 rounded-full" />
-                    <p className="font-medium">{item}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Price Breakdown */}
-            <div className="bg-black/40 border border-zinc-900 p-4 rounded-xl space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-zinc-500 font-bold">Subtotal</span>
-                <span className="font-black">₦{orderDetails.subtotal.toLocaleString()}</span>
-              </div>
-              {orderDetails.discount_code && (
-                <div className="flex justify-between text-sm text-green-500">
-                  <span className="font-bold">Discount ({orderDetails.discount_code})</span>
-                  <span className="font-black">-₦{orderDetails.discount_amount.toFixed(0)}</span>
-                </div>
-              )}
-              {orderDetails.address && (
-                <div className="bg-orange-500/10 border border-orange-500/30 p-3 rounded-lg">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle size={14} className="text-orange-400 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-xs font-black text-orange-400 uppercase mb-1">Delivery Fee</p>
-                      <p className="text-xs text-orange-400/80 leading-relaxed">
-                        Calculated on arrival (₦{deliveryFeePerKm}/km based on distance)
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div className="pt-3 border-t border-zinc-900 flex justify-between">
-                <span className="text-lg font-black italic uppercase">Total</span>
-                <span className="text-2xl font-black italic text-orange-500">₦{orderDetails.grand_total.toLocaleString()}</span>
-              </div>
-            </div>
-
+          {/* order number */}
+          <div style={{ textAlign: 'center', paddingBottom: '22px', borderBottom: '1px dashed #2c2c2c', marginBottom: '20px' }}>
+            <div style={{ fontSize: '9px', fontWeight: '700', letterSpacing: '0.45em', color: '#555555', textTransform: 'uppercase', marginBottom: '8px' }}>Order Reference</div>
+            <div style={{ fontSize: '52px', fontWeight: '900', color: '#ffffff', lineHeight: '1', letterSpacing: '-0.02em' }}>#{orderDetails.id}</div>
           </div>
 
-          {/* Action Buttons */}
+          {/* date row */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '16px', borderBottom: '1px dashed #2c2c2c', marginBottom: '16px' }}>
+            <span style={{ fontSize: '9px', fontWeight: '700', letterSpacing: '0.35em', color: '#555555', textTransform: 'uppercase' }}>Date &amp; Time</span>
+            <span style={{ fontSize: '12px', fontWeight: '800', color: '#e0e0e0' }}>{formatOrderDateTime(orderDetails.created_at)}</span>
+          </div>
+
+          {/* customer */}
+          <div style={{ display: 'flex', gap: '0', paddingBottom: '16px', borderBottom: '1px dashed #2c2c2c', marginBottom: '16px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '9px', fontWeight: '700', letterSpacing: '0.35em', color: '#555555', textTransform: 'uppercase', marginBottom: '5px' }}>Customer</div>
+              <div style={{ fontSize: '13px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase' }}>{orderDetails.customer_name}</div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '9px', fontWeight: '700', letterSpacing: '0.35em', color: '#555555', textTransform: 'uppercase', marginBottom: '5px' }}>Phone</div>
+              <div style={{ fontSize: '13px', fontWeight: '800', color: '#ffffff' }}>{orderDetails.phone_number}</div>
+            </div>
+          </div>
+
+          {/* address */}
+          {orderDetails.address && (
+            <div style={{ background: '#1a1200', borderLeft: '3px solid #f97316', padding: '12px 16px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '9px', fontWeight: '700', letterSpacing: '0.35em', color: '#f97316', textTransform: 'uppercase', marginBottom: '6px' }}>Delivery Address</div>
+              <div style={{ fontSize: '12px', fontWeight: '800', color: '#ffffff', textTransform: 'uppercase', marginBottom: '5px' }}>{orderDetails.address}</div>
+              <div style={{ fontSize: '10px', fontWeight: '600', color: '#888888' }}>
+                {orderDetails.payment_method === 'cash' ? 'Cash on Delivery' : 'Transfer on Delivery'}
+              </div>
+            </div>
+          )}
+
+          {/* items label */}
+          <div style={{ fontSize: '9px', fontWeight: '700', letterSpacing: '0.45em', color: '#555555', textTransform: 'uppercase', marginBottom: '12px' }}>Items Ordered</div>
+
+          {/* item rows */}
+          {itemsList.map((item, idx) => (
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: '1px solid #1d1d1d' }}>
+              <div style={{ width: '6px', height: '6px', background: '#f97316', borderRadius: '50%', flexShrink: 0 }} />
+              <span style={{ fontSize: '13px', fontWeight: '700', color: '#dddddd', textTransform: 'uppercase' }}>{item}</span>
+            </div>
+          ))}
+
+          {/* pricing */}
+          <div style={{ marginTop: '18px', paddingTop: '18px', borderTop: '1px dashed #2c2c2c' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}>
+              <span style={{ fontSize: '11px', fontWeight: '600', color: '#777777', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Subtotal</span>
+              <span style={{ fontSize: '13px', fontWeight: '800', color: '#cccccc' }}>&#8358;{orderDetails.subtotal.toLocaleString()}</span>
+            </div>
+            {orderDetails.discount_code && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}>
+                <span style={{ fontSize: '11px', fontWeight: '700', color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Discount ({orderDetails.discount_code})</span>
+                <span style={{ fontSize: '13px', fontWeight: '800', color: '#22c55e' }}>-&#8358;{orderDetails.discount_amount.toFixed(0)}</span>
+              </div>
+            )}
+            {/* total line */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '16px', borderTop: '2px solid #f97316' }}>
+              <span style={{ fontSize: '14px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.2em' }}>Total</span>
+              <span style={{ fontSize: '36px', fontWeight: '900', color: '#f97316', lineHeight: '1', letterSpacing: '-0.02em' }}>&#8358;{orderDetails.grand_total.toLocaleString()}</span>
+            </div>
+            {orderDetails.address && (
+              <div style={{ marginTop: '12px', padding: '9px 14px', background: '#140c00', border: '1px solid rgba(249,115,22,0.35)', textAlign: 'center' }}>
+                <span style={{ fontSize: '9px', fontWeight: '700', color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.2em' }}>
+                  + Delivery fee collected on arrival (&#8358;{deliveryFeePerKm}/km)
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* footer */}
+        <div style={{ background: '#0d0d0d', borderLeft: '1px solid #1f1f1f', borderRight: '1px solid #1f1f1f', borderBottom: '1px solid #1f1f1f', padding: '22px 32px 20px' }}>
+          {/* barcode */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '2px', marginBottom: '8px' }}>
+            {barWidths.map((w, i) => (
+              <div key={i} style={{ width: `${w}px`, height: '56px', background: i % 2 === 0 ? '#ffffff' : '#000000', flexShrink: 0 }} />
+            ))}
+          </div>
+          <div style={{ textAlign: 'center', fontSize: '9px', color: '#333333', letterSpacing: '0.2em', fontFamily: mono, marginBottom: '16px' }}>
+            {barcodeNum}
+          </div>
+          <div style={{ borderTop: '1px dashed #222222', marginBottom: '16px' }} />
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '9px', fontWeight: '700', letterSpacing: '0.5em', color: '#3a3a3a', textTransform: 'uppercase', marginBottom: '5px' }}>Thank you for your purchase</div>
+            <div style={{ fontSize: '9px', fontWeight: '700', letterSpacing: '0.4em', color: '#2a2a2a', textTransform: 'uppercase', marginBottom: '10px' }}>Keep this receipt for your records</div>
+            <div style={{ fontSize: '10px', fontWeight: '900', letterSpacing: '0.4em', color: '#f97316', textTransform: 'uppercase' }}>
+              {orderDetails.store_name} • 2026
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-6 text-white">
+
+        {/* Hidden receipt for download — rendered off-screen */}
+        <HiddenReceipt />
+
+        {/* ══ ON-SCREEN RECEIPT — beautiful Tailwind version ══ */}
+        <div className="w-full max-w-md">
+          <div className="rounded-none shadow-2xl shadow-black overflow-hidden mb-5">
+
+            {/* orange header */}
+            <div className="bg-orange-500 px-8 py-6 text-center">
+              <h1 className="text-2xl font-black tracking-[0.2em] uppercase text-black mb-1">{orderDetails.store_name}</h1>
+              <p className="text-[9px] font-bold tracking-[0.4em] uppercase text-black/60">Official Purchase Receipt</p>
+            </div>
+
+            {/* confirmed strip */}
+            <div className="bg-[#161616] py-2.5 text-center border-b border-white/5">
+              <span className="text-[10px] font-black tracking-[0.4em] uppercase text-green-400">✓ &nbsp; Order Confirmed &nbsp; ✓</span>
+            </div>
+
+            {/* body */}
+            <div className="bg-[#111] px-8 py-7 border-x border-white/5">
+
+              {/* order number */}
+              <div className="text-center pb-5 border-b border-dashed border-white/10 mb-5">
+                <p className="text-[9px] font-bold tracking-[0.45em] uppercase text-zinc-600 mb-2">Order Reference</p>
+                <p className="text-5xl font-black text-white" style={{ fontFamily: mono }}>#{orderDetails.id}</p>
+              </div>
+
+              {/* date */}
+              <div className="flex justify-between items-center pb-4 border-b border-dashed border-white/10 mb-4">
+                <span className="text-[9px] font-bold tracking-widest uppercase text-zinc-600">Date &amp; Time</span>
+                <span className="text-xs font-bold text-zinc-200">{formatOrderDateTime(orderDetails.created_at)}</span>
+              </div>
+
+              {/* customer */}
+              <div className="flex pb-4 border-b border-dashed border-white/10 mb-4">
+                <div className="flex-1">
+                  <p className="text-[9px] font-bold tracking-widest uppercase text-zinc-600 mb-1">Customer</p>
+                  <p className="text-sm font-black uppercase text-white">{orderDetails.customer_name}</p>
+                </div>
+                <div className="flex-1">
+                  <p className="text-[9px] font-bold tracking-widest uppercase text-zinc-600 mb-1">Phone</p>
+                  <p className="text-sm font-bold text-white">{orderDetails.phone_number}</p>
+                </div>
+              </div>
+
+              {/* address */}
+              {orderDetails.address && (
+                <div className="border-l-[3px] border-orange-500 bg-orange-950/30 pl-4 py-3 mb-4">
+                  <p className="text-[9px] font-bold tracking-widest uppercase text-orange-400 mb-1.5">Delivery Address</p>
+                  <p className="text-xs font-black uppercase text-white mb-1">{orderDetails.address}</p>
+                  <p className="text-[10px] text-zinc-500">{orderDetails.payment_method === 'cash' ? 'Cash on Delivery' : 'Transfer on Delivery'}</p>
+                </div>
+              )}
+
+              {/* items */}
+              <p className="text-[9px] font-bold tracking-[0.45em] uppercase text-zinc-600 mb-3">Items Ordered</p>
+              {itemsList.map((item, idx) => (
+                <div key={idx} className="flex items-center gap-3 py-2.5 border-b border-white/5">
+                  <div className="w-1.5 h-1.5 bg-orange-500 rounded-full flex-shrink-0" />
+                  <span className="text-sm font-bold uppercase text-zinc-300">{item}</span>
+                </div>
+              ))}
+
+              {/* pricing */}
+              <div className="mt-5 pt-5 border-t border-dashed border-white/10">
+                <div className="flex justify-between py-1">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Subtotal</span>
+                  <span className="text-sm font-bold text-zinc-300">₦{orderDetails.subtotal.toLocaleString()}</span>
+                </div>
+                {orderDetails.discount_code && (
+                  <div className="flex justify-between py-1">
+                    <span className="text-xs font-bold uppercase tracking-wider text-green-400">Discount ({orderDetails.discount_code})</span>
+                    <span className="text-sm font-bold text-green-400">−₦{orderDetails.discount_amount.toFixed(0)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center mt-4 pt-4 border-t-2 border-orange-500">
+                  <span className="text-sm font-black uppercase tracking-widest text-white">Total</span>
+                  <span className="text-4xl font-black text-orange-500 leading-none" style={{ fontFamily: mono }}>₦{orderDetails.grand_total.toLocaleString()}</span>
+                </div>
+                {orderDetails.address && (
+                  <div className="mt-3 py-2 px-3 bg-orange-950/40 border border-orange-500/30 text-center">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-orange-400">+ Delivery fee collected on arrival (₦{deliveryFeePerKm}/km)</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* footer */}
+            <div className="bg-[#0d0d0d] border-x border-b border-white/5 px-8 py-5">
+              {/* barcode */}
+              <div className="flex justify-center gap-0.5 mb-2">
+                {barWidths.map((w, i) => (
+                  <div key={i} style={{ width: `${w}px` }} className={`h-12 ${i % 2 === 0 ? 'bg-white' : 'bg-black'} flex-shrink-0`} />
+                ))}
+              </div>
+              <p className="text-center text-[8px] text-zinc-700 tracking-widest mb-4" style={{ fontFamily: mono }}>{barcodeNum}</p>
+              <div className="border-t border-dashed border-white/10 mb-4" />
+              <div className="text-center space-y-1">
+                <p className="text-[9px] font-bold tracking-[0.5em] uppercase text-zinc-700">Thank you for your purchase</p>
+                <p className="text-[9px] font-bold tracking-[0.4em] uppercase text-zinc-800">Keep this receipt for your records</p>
+                <p className="text-[10px] font-black tracking-[0.4em] uppercase text-orange-500 pt-1">{orderDetails.store_name} • 2026</p>
+              </div>
+            </div>
+          </div>
+
+          {/* ── ACTION BUTTONS ── */}
           <div className="space-y-3">
-            <div className="bg-zinc-950 border border-zinc-900 p-4 rounded-2xl">
+            <div className="bg-zinc-950 border border-zinc-900 p-4 rounded-xl">
               <p className="text-xs font-black text-orange-500 uppercase mb-3 flex items-center gap-2">
                 <Package size={14} /> How to Track Your Order
               </p>
-              <div className="space-y-2 text-xs text-zinc-400">
+              <div className="space-y-1.5 text-xs text-zinc-400">
                 <div className="flex gap-2"><span className="text-orange-500 font-black">1.</span><p>Click <strong className="text-white">"Copy Order ID"</strong> below</p></div>
-                <div className="flex gap-2"><span className="text-orange-500 font-black">2.</span><p>Click <strong className="text-white">"Track Now"</strong> — your order ID will be auto-filled</p></div>
-                <div className="flex gap-2"><span className="text-orange-500 font-black">3.</span><p>Save the receipt image as a record of your purchase</p></div>
+                <div className="flex gap-2"><span className="text-orange-500 font-black">2.</span><p>Click <strong className="text-white">"Track Now"</strong> — your ID is auto-filled</p></div>
+                <div className="flex gap-2"><span className="text-orange-500 font-black">3.</span><p>Save the receipt image as your purchase record</p></div>
               </div>
             </div>
 
-            <button
-              onClick={copyOrderId}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2"
-            >
-              {orderIdCopied ? <><CheckCircle2 size={16} /> Copied Order ID!</> : <><Copy size={16} /> Copy Order ID #{orderId}</>}
+            <button onClick={copyOrderId} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2">
+              {orderIdCopied ? <><CheckCircle2 size={16} /> Copied!</> : <><Copy size={16} /> Copy Order ID #{orderId}</>}
             </button>
 
-            <button
-              onClick={saveReceiptAsImage}
-              className="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2"
-            >
+            <button onClick={saveReceiptAsImage} className="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2">
               <Download size={16} /> Save Receipt as Image
             </button>
 
-            <button
-              onClick={handleTrackNow}
-              className="w-full bg-orange-600 hover:bg-orange-500 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 shadow-lg shadow-orange-500/30"
-            >
+            <button onClick={handleTrackNow} className="w-full bg-orange-600 hover:bg-orange-500 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 shadow-lg shadow-orange-500/30">
               🚀 Track My Order Now
             </button>
 
-            <button
-              onClick={() => setOrderStatus('shopping')}
-              className="w-full bg-zinc-900 text-zinc-400 hover:text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest transition-all active:scale-95"
-            >
+            <button onClick={() => setOrderStatus('shopping')} className="w-full bg-zinc-900 text-zinc-400 hover:text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest transition-all active:scale-95">
               Continue Shopping
             </button>
           </div>

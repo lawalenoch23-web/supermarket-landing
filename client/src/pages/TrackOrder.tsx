@@ -75,6 +75,27 @@ export default function TrackOrder() {
     }));
   };
 
+  // ─── CONFIRM RECEIPT FUNCTION ───
+  const confirmReceipt = async (orderId: number) => {
+    if (!confirm('Confirm that you have received your order?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: 'COMPLETED' })
+        .eq('id', orderId);
+
+      if (error) throw error;
+
+      alert('✅ Thank you for confirming! Order marked as completed.');
+      // Refresh the order
+      const { data } = await supabase.from('orders').select('*').eq('id', orderId).single();
+      if (data) setRes(data);
+    } catch (err: any) {
+      alert('Failed to confirm: ' + err.message);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 md:py-12">

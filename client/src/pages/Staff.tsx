@@ -4,7 +4,7 @@ import {
   ShoppingCart, Package, Clock, CheckCircle, Truck, AlertCircle, 
   User, MapPin, Phone, Plus, Minus, Trash2, LogOut, X, Save, Edit3, 
   Search, AlertTriangle, Bell, Upload, PackagePlus, PlusCircle,
-  ChevronDown, ChevronUp, ShoppingBag
+  ChevronDown, ChevronUp, ShoppingBag, DollarSign
 } from 'lucide-react';
 
 // ══════════════════════════════════════════════════════════════
@@ -585,6 +585,15 @@ export default function StaffOS() {
             <ShoppingBag size={16} className="inline mr-2" />
             Pickup Orders {pendingCount > 0 && `(${pendingCount})`}
           </button>
+          <button
+            onClick={() => setActiveView('payments')}
+            className={`px-5 py-2.5 rounded-lg font-bold text-sm uppercase tracking-wider transition-colors whitespace-nowrap ${
+              activeView === 'payments' ? 'bg-[#ff8c00] text-black' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+            }`}
+          >
+            <DollarSign size={16} className="inline mr-2" />
+            Payments
+          </button>
         </div>
       </nav>
 
@@ -894,6 +903,72 @@ export default function StaffOS() {
                     })
                   )}
                 </div>
+              </div>
+            </>
+          )}
+
+          {activeView === 'payments' && (
+            <>
+              {/* CASH IN FIELD METRIC */}
+              <div className="bg-gradient-to-br from-orange-500/10 to-red-500/10 border-2 border-orange-500/30 p-6 rounded-xl mb-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase text-orange-400 mb-2">💵 Cash in Field</p>
+                    <p className="text-4xl font-black text-orange-500">₦{cashInField.toLocaleString()}</p>
+                    <p className="text-xs text-zinc-400 mt-2">
+                      {deliveredUnpaidOrders.length} order{deliveredUnpaidOrders.length !== 1 ? 's' : ''} awaiting collection
+                    </p>
+                  </div>
+                  <div className="bg-orange-500/20 p-4 rounded-xl">
+                    <DollarSign size={48} className="text-orange-500" />
+                  </div>
+                </div>
+              </div>
+
+              {/* UNPAID ORDERS LIST */}
+              <div className="bg-[#242424] border border-zinc-800 rounded-xl overflow-hidden">
+                <div className="p-5 border-b border-zinc-800 bg-zinc-900/20">
+                  <h2 className="text-sm font-black uppercase flex items-center gap-2">
+                    <AlertTriangle size={16} className="text-orange-500" />
+                    Awaiting Payment Confirmation
+                  </h2>
+                </div>
+
+                {deliveredUnpaidOrders.length === 0 ? (
+                  <div className="p-16 text-center">
+                    <CheckCircle size={48} className="text-green-500 mx-auto mb-3" />
+                    <p className="text-sm font-black uppercase text-zinc-600">All Payments Collected!</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-zinc-800">
+                    {deliveredUnpaidOrders.map(order => (
+                      <div key={order.id} className="p-5 hover:bg-white/[0.02] transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="text-lg font-black text-orange-500">Order #{order.id}</span>
+                              <span className="px-2 py-1 bg-orange-500/20 text-orange-400 text-[10px] font-black uppercase rounded">Unpaid</span>
+                            </div>
+                            <p className="text-sm font-bold text-white mb-1">{order.customer_name}</p>
+                            <p className="text-xs text-zinc-500">{order.phone_number}</p>
+                            <p className="text-xs text-zinc-600 mt-1">{formatOrderDateTime(order.created_at)}</p>
+                          </div>
+
+                          <div className="text-right">
+                            <p className="text-2xl font-black text-orange-500 mb-3">₦{(order.total_price || 0).toLocaleString()}</p>
+                            <button
+                              onClick={() => confirmPaymentReceived(order.id)}
+                              className="px-6 py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl font-black uppercase text-xs tracking-wider transition-all active:scale-95"
+                            >
+                              <CheckCircle size={14} className="inline mr-2" />
+                              Confirm Payment
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}

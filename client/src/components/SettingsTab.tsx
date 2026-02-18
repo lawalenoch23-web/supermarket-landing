@@ -106,7 +106,7 @@ export function SettingsTab({ onSettingsSaved }: SettingsProps) {
           <div>
             <p className="text-xs text-blue-400 font-bold uppercase mb-1">Master Recovery Key Active</p>
             <p className="text-xs text-zinc-400 leading-relaxed">
-              If you forget your passwords, you can always login using the Master Recovery Key stored in Replit Secrets (VITE_MASTER_RECOVERY_KEY).
+              If you forget your passwords, you can always login using the Master Recovery Key .
             </p>
           </div>
         </div>

@@ -51,7 +51,7 @@ export default function Delivery() {
     }
   }, []);
 
-  // --- FETCH ORDERS (DELIVERY ONLY) ---
+  // --- FETCH ORDERS (ONLY READY FOR DELIVERY) ---
   const fetchOrders = async () => {
     setLoading(true);
     try {
@@ -59,7 +59,7 @@ export default function Delivery() {
         .from('orders')
         .select('*')
         .not('address', 'is', null)
-        .neq('status', 'DONE')
+        .in('status', ['READY', 'OUT_FOR_DELIVERY'])
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -304,8 +304,14 @@ export default function Delivery() {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-black text-zinc-500 uppercase">Order #{order.id}</span>
-                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${order.status === 'READY' ? 'bg-blue-600/20 text-blue-500' : order.status === 'SHIPPED' ? 'bg-green-600/20 text-green-500' : order.status === 'PREPARING' ? 'bg-yellow-600/20 text-yellow-500' : 'bg-orange-600/20 text-orange-500'}`}>
-                      {order.status}
+                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${
+                      order.status === 'READY' ? 'bg-green-600/20 text-green-400' : 
+                      order.status === 'OUT_FOR_DELIVERY' ? 'bg-orange-600/20 text-orange-400' : 
+                      order.status === 'PREPARING' ? 'bg-blue-600/20 text-blue-400' : 
+                      order.status === 'PENDING' ? 'bg-yellow-600/20 text-yellow-400' : 
+                      'bg-zinc-600/20 text-zinc-400'
+                    }`}>
+                      {order.status.replace('_', ' ')}
                     </span>
                   </div>
                   {/* ✅ Full date/time displayed clearly */}
@@ -355,21 +361,39 @@ export default function Delivery() {
                     <Phone size={18} /> Call {order.customer_name.split(' ')[0]}
                   </a>
                 )}
-                <div className="grid grid-cols-3 gap-2">
-                  {order.status !== 'READY' && (
-                    <button onClick={() => updateOrderStatus(order.id, 'READY')} disabled={updating === order.id} className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 text-white py-4 rounded-xl font-black uppercase text-xs tracking-wider flex flex-col items-center justify-center gap-1 active:scale-95 transition-all disabled:opacity-50">
-                      <Package size={18} /><span>Pick Up</span>
-                    </button>
-                  )}
-                  {order.status !== 'SHIPPED' && (
-                    <button onClick={() => updateOrderStatus(order.id, 'SHIPPED')} disabled={updating === order.id} className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-zinc-800 text-white py-4 rounded-xl font-black uppercase text-xs tracking-wider flex flex-col items-center justify-center gap-1 active:scale-95 transition-all disabled:opacity-50">
-                      <Truck size={18} /><span>On Way</span>
-                    </button>
-                  )}
-                  <button onClick={() => updateOrderStatus(order.id, 'DONE')} disabled={updating === order.id} className="bg-green-600 hover:bg-green-500 disabled:bg-zinc-800 text-white py-4 rounded-xl font-black uppercase text-xs tracking-wider flex flex-col items-center justify-center gap-1 active:scale-95 transition-all disabled:opacity-50">
-                    <CheckCircle2 size={18} /><span>Delivered</span>
+
+                {/* READY orders show Accept Delivery button */}
+                {order.status === 'READY' && (
+                  <button 
+                    onClick={() => updateOrderStatus(order.id, 'OUT_FOR_DELIVERY')} 
+                    disabled={updating === order.id} 
+                    className="w-full bg-[#ff8c00] hover:bg-[#ff9f1a] text-black py-5 rounded-2xl font-black uppercase text-sm tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-orange-500/30 disabled:opacity-50"
+                  >
+                    <Truck size={20} /> Accept Delivery
                   </button>
-                </div>
+                )}
+
+                {/* OUT_FOR_DELIVERY orders show status buttons */}
+                {order.status === 'OUT_FOR_DELIVERY' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button 
+                      onClick={() => updateOrderStatus(order.id, 'DONE')} 
+                      disabled={updating === order.id} 
+                      className="bg-green-600 hover:bg-green-500 disabled:bg-zinc-800 text-white py-4 rounded-xl font-black uppercase text-xs tracking-wider flex flex-col items-center justify-center gap-1 active:scale-95 transition-all disabled:opacity-50"
+                    >
+                      <CheckCircle2 size={18} />
+                      <span>Mark Delivered</span>
+                    </button>
+                    <button 
+                      onClick={() => updateOrderStatus(order.id, 'READY')} 
+                      disabled={updating === order.id} 
+                      className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-zinc-800 text-white py-4 rounded-xl font-black uppercase text-xs tracking-wider flex flex-col items-center justify-center gap-1 active:scale-95 transition-all disabled:opacity-50"
+                    >
+                      <Package size={18} />
+                      <span>Return to Queue</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))

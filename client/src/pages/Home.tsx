@@ -390,7 +390,7 @@ export default function Home() {
           <div style={{ marginTop: '18px', paddingTop: '18px', borderTop: '1px dashed #2c2c2c' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}>
               <span style={{ fontSize: '11px', fontWeight: '600', color: '#777777', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Subtotal</span>
-              <span style={{ fontSize: '13px', fontWeight: '800', color: '#cccccc' }}>&#8358;{orderDetails.subtotal.toLocaleString()}</span>
+              <span style={{ fontSize: '13px', fontWeight: '800', color: '#cccccc' }}>&#8358;{(orderDetails.subtotal || 0).toLocaleString()}</span>
             </div>
             {orderDetails.discount_code && (
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}>
@@ -401,7 +401,7 @@ export default function Home() {
             {/* total line */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '16px', borderTop: '2px solid #f97316' }}>
               <span style={{ fontSize: '14px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.2em' }}>Total</span>
-              <span style={{ fontSize: '36px', fontWeight: '900', color: '#f97316', lineHeight: '1', letterSpacing: '-0.02em' }}>&#8358;{orderDetails.grand_total.toLocaleString()}</span>
+              <span style={{ fontSize: '36px', fontWeight: '900', color: '#f97316', lineHeight: '1', letterSpacing: '-0.02em' }}>&#8358;{(orderDetails.grand_total || 0).toLocaleString()}</span>
             </div>
             {orderDetails.address && (
               <div style={{ marginTop: '12px', padding: '9px 14px', background: '#140c00', border: '1px solid rgba(249,115,22,0.35)', textAlign: 'center' }}>
@@ -506,7 +506,7 @@ export default function Home() {
               <div className="mt-5 pt-5 border-t border-dashed border-white/10">
                 <div className="flex justify-between py-1">
                   <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Subtotal</span>
-                  <span className="text-sm font-bold text-zinc-300">₦{orderDetails.subtotal.toLocaleString()}</span>
+                  <span className="text-sm font-bold text-zinc-300">₦{(orderDetails.subtotal || 0).toLocaleString()}</span>
                 </div>
                 {orderDetails.discount_code && (
                   <div className="flex justify-between py-1">
@@ -516,7 +516,7 @@ export default function Home() {
                 )}
                 <div className="flex justify-between items-center mt-4 pt-4 border-t-2 border-orange-500">
                   <span className="text-sm font-black uppercase tracking-widest text-white">Total</span>
-                  <span className="text-4xl font-black text-orange-500 leading-none" style={{ fontFamily: mono }}>₦{orderDetails.grand_total.toLocaleString()}</span>
+                  <span className="text-4xl font-black text-orange-500 leading-none" style={{ fontFamily: mono }}>₦{(orderDetails.grand_total || 0).toLocaleString()}</span>
                 </div>
                 {orderDetails.address && (
                   <div className="mt-3 py-2 px-3 bg-orange-950/40 border border-orange-500/30 text-center">
@@ -726,7 +726,7 @@ export default function Home() {
                   <div key={i} className="bg-black/50 backdrop-blur-sm border border-zinc-900 p-5 rounded-2xl flex justify-between items-center group">
                     <span className="text-[10px] font-black uppercase italic tracking-tighter">{item.name}</span>
                     <div className="flex items-center gap-4">
-                      <span className="text-orange-500 font-bold text-[10px]">₦{item.price.toLocaleString()}</span>
+                      <span className="text-orange-500 font-bold text-[10px]">₦{item.price?.toLocaleString()}</span>
                       <button onClick={() => { const n = [...cart]; n.splice(i, 1); setCart(n); }} className="text-red-900 hover:text-red-500 text-[8px] font-black uppercase opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1">Remove</button>
                     </div>
                   </div>

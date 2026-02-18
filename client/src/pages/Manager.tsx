@@ -1,313 +1,377 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { 
-  Trash2, LayoutDashboard, PlusCircle, 
-  Save, Clock, MapPin, Calendar, PackagePlus, Edit3, DollarSign, ShoppingBag, AlertTriangle, Download, Upload, ChevronUp, X, Filter, Package, Settings, Tag, Percent
+  ShoppingCart, Package, Clock, CheckCircle, Truck, AlertCircle, 
+  User, MapPin, Phone, Plus, Minus, Trash2, LogOut, X, Save, Edit3, 
+  Search, AlertTriangle, Bell, Upload, PackagePlus, PlusCircle,
+  ChevronDown, ChevronUp, ShoppingBag, DollarSign
 } from 'lucide-react';
-import SettingsTab from '../components/SettingsTab';
 
-const InstagramIcon = ({ size = 16, className = '' }: { size?: number; className?: string }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
-    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
-    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
-  </svg>
-);
+// ══════════════════════════════════════════════════════════════
+// TYPES & FORMATTERS
+// ══════════════════════════════════════════════════════════════
 
-const TwitterXIcon = ({ size = 16, className = '' }: { size?: number; className?: string }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
-    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-  </svg>
-);
+type OrderStatus = 'PENDING' | 'PREPARING' | 'READY' | 'OUT_FOR_DELIVERY' | 'DONE';
 
-const WhatsAppIcon = ({ size = 16, className = '' }: { size?: number; className?: string }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
-    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/>
-  </svg>
-);
+interface CounterItem {
+  productId: number;
+  name: string;
+  price: number;
+  quantity: number;
+}
 
-// ✅ Shared date/time formatter
 const formatOrderDateTime = (isoString: string): string => {
   if (!isoString) return '—';
   const d = new Date(isoString);
   return d.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
   });
 };
 
-export default function Manager() {
-  // --- 0. AUTHENTICATION STATE ---
+// ══════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ══════════════════════════════════════════════════════════════
+
+export default function StaffOS() {
+  // ─── AUTHENTICATION ───
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // --- 1. STATE ---
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'settings' | 'payments'>('dashboard');
-  const [orders, setOrders] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
+  // ─── DATA STATE ───
   const [products, setProducts] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [onlineOrders, setOnlineOrders] = useState<any[]>([]);
+  const [pickupOrders, setPickupOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [msgs, setMsgs] = useState<any[]>([]);
+
+  // ─── COUNTER SALE (POS) ───
+  const [counterCart, setCounterCart] = useState<CounterItem[]>([]);
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [processingCheckout, setProcessingCheckout] = useState(false);
+
+  // ─── INVENTORY MANAGEMENT ───
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newName, setNewName] = useState('');
   const [newPrice, setNewPrice] = useState('');
-  const [newCategory, setNewCategory] = useState('');
-  const [newImage, setNewImage] = useState('');
   const [newStock, setNewStock] = useState('10');
-  const [showAddresses, setShowAddresses] = useState(false);
-  const [filterStatus, setFilterStatus] = useState('ALL');
-  const [dateFilter, setDateFilter] = useState('ALL_TIME');
-  const [orderTypeFilter, setOrderTypeFilter] = useState<'PICKUP' | 'DELIVERY' | 'ALL'>('PICKUP');
+  const [newCategory, setNewCategory] = useState('');
+  const [newProduct, setNewProduct] = useState({ name: '', price: '', image_url: '', category: '', stock: '10' });
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('DEFAULT');
-  const [showInventory, setShowInventory] = useState(false);
-  const [showCategoryBreakdown, setShowCategoryBreakdown] = useState(false);
-  const [newProduct, setNewProduct] = useState({ name: '', price: '', image_url: '', category: '', stock: '10' });
-  const [deliveryFeePerKm, setDeliveryFeePerKm] = useState('150');
-  const [isSavingFee, setIsSavingFee] = useState(false);
 
-  // --- SOCIAL MEDIA STATE ---
-  const [instagramUrl, setInstagramUrl] = useState('');
-  const [whatsappUrl, setWhatsappUrl] = useState('');
-  const [twitterUrl, setTwitterUrl] = useState('');
-  const [isSavingSocials, setIsSavingSocials] = useState(false);
+  // ─── UI STATE ───
+  const [activeView, setActiveView] = useState<'pos' | 'inventory' | 'categories' | 'orders' | 'payments'>('pos');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [newOrderGlow, setNewOrderGlow] = useState(false);
+  const [orderFilter, setOrderFilter] = useState('ALL');
+  const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // --- DISCOUNT STATE ---
-  const [discounts, setDiscounts] = useState<any[]>([]);
-  const [newDiscountCode, setNewDiscountCode] = useState('');
-  const [newDiscountPercent, setNewDiscountPercent] = useState('');
-  const [showAddDiscount, setShowAddDiscount] = useState(false);
-
-  // ✅ Edit Modal State
+  // ─── PRODUCT EDIT MODAL ───
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', price: '', stock: '', image_url: '', category: '' });
 
-  // --- 2. ANALYTICS ---
-  const filteredOrders = orders.filter(order => {
-    const matchesStatus = filterStatus === 'ALL' || order.status === filterStatus;
-    const orderDate = new Date(order.created_at);
-    const now = new Date();
-    let matchesDate = true;
-    if (dateFilter === '24H') matchesDate = (now.getTime() - orderDate.getTime()) <= 24 * 60 * 60 * 1000;
-    else if (dateFilter === 'WEEK') matchesDate = (now.getTime() - orderDate.getTime()) <= 7 * 24 * 60 * 60 * 1000;
-    else if (dateFilter === 'MONTH') matchesDate = (now.getTime() - orderDate.getTime()) <= 30 * 24 * 60 * 60 * 1000;
-    else if (dateFilter === 'YEAR') matchesDate = (now.getTime() - orderDate.getTime()) <= 365 * 24 * 60 * 60 * 1000;
-
-    let matchesOrderType = true;
-    if (orderTypeFilter === 'PICKUP') matchesOrderType = !order.address || order.address === null;
-    else if (orderTypeFilter === 'DELIVERY') matchesOrderType = order.address && order.address !== null;
-
-    return matchesStatus && matchesDate && matchesOrderType;
-  });
-
-  const totalRevenue = filteredOrders.reduce((sum, order) => sum + (order.total_price || 0), 0);
-
-  // ─── PAYMENT RECONCILIATION CALCULATIONS ───
-  const deliveredUnpaidOrders = orders.filter(o => 
-    o.status === 'DONE' && 
-    o.payment_status === 'unpaid' && 
-    o.address !== null  // Only delivery orders
-  );
-
-  const cashInField = deliveredUnpaidOrders.reduce((sum, order) => sum + (order.total_price || 0), 0);
-
-  // Revenue from PAID orders only
-  const paidRevenue = orders.filter(o => o.payment_status === 'paid').reduce((sum, order) => sum + (order.total_price || 0), 0);
-  const totalStockValue = products.reduce((sum, product) => sum + ((product.stock || 0) * (product.price || 0)), 0);
-  const totalStockItems = products.reduce((sum, product) => sum + (product.stock || 0), 0);
-
-  const stockByCategory = categories.map(category => {
-    const categoryProducts = products.filter(p => p.category === category.name);
-    const totalValue = categoryProducts.reduce((sum, p) => sum + ((p.stock || 0) * (p.price || 0)), 0);
-    const totalItems = categoryProducts.reduce((sum, p) => sum + (p.stock || 0), 0);
-    return { name: category.name, totalValue, totalItems, productCount: categoryProducts.length };
-  }).sort((a, b) => b.totalValue - a.totalValue);
-
-  // ─── CONFIRM PAYMENT RECEIVED ───
-  const confirmPaymentReceived = async (orderId: number) => {
-    if (!confirm('Confirm that payment has been received from the driver?')) return;
-
-    try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ payment_status: 'paid' })
-        .eq('id', orderId);
-
-      if (error) throw error;
-
-      alert('✅ Payment confirmed and recorded!');
-      fetchManagerData();
-    } catch (err: any) {
-      alert('Failed to confirm payment: ' + err.message);
+  // ─── CHECK AUTH ON MOUNT ───
+  useEffect(() => {
+    const session = localStorage.getItem('staff_session');
+    const sessionTime = localStorage.getItem('staff_session_time');
+    if (session && sessionTime) {
+      const now = new Date().getTime();
+      const sessionAge = now - parseInt(sessionTime);
+      if (sessionAge < 12 * 60 * 60 * 1000) {
+        setIsAuthenticated(true);
+      } else {
+        localStorage.removeItem('staff_session');
+        localStorage.removeItem('staff_session_time');
+      }
     }
-  };
+  }, []);
 
-  // --- 3. DATA FETCH ---
-  const fetchManagerData = async () => {
+  // ─── FETCH DATA ───
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const { data: oData } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
-      if (oData) setOrders(oData);
+      const [productsRes, categoriesRes, onlineOrdersRes, pickupOrdersRes] = await Promise.all([
+        supabase.from('products').select('*').order('name'),
+        supabase.from('categories').select('*').order('name'),
+        supabase.from('orders').select('*').not('address', 'is', null).order('created_at', { ascending: false }),
+        supabase.from('orders').select('*').is('address', null).order('created_at', { ascending: false })
+      ]);
 
-      const { data: mData } = await supabase.from('messages').select('*').order('created_at', { ascending: false });
-      if (mData) setMsgs(mData);
+      if (productsRes.data) setProducts(productsRes.data);
+      if (categoriesRes.data) setCategories(categoriesRes.data);
 
-      const { data: cData } = await supabase.from('categories').select('*').order('name', { ascending: true });
-      if (cData) setCategories(cData);
+      if (onlineOrdersRes.data) {
+        const previousCount = onlineOrders.length;
+        const newCount = onlineOrdersRes.data.length;
 
-      const { data: pData } = await supabase.from('products').select('*').order('created_at', { ascending: false });
-      if (pData) setProducts(pData);
+        // Trigger notification if new order arrived
+        if (newCount > previousCount && previousCount > 0) {
+          triggerNewOrderNotification();
+        }
 
-      const { data: sData } = await supabase.from('store_settings').select('*').eq('id', 1).single();
-      if (sData) {
-        setDeliveryFeePerKm(String(sData.delivery_fee_per_km || 150));
-        setInstagramUrl(sData.instagram_url || '');
-        setWhatsappUrl(sData.whatsapp_url || '');
-        setTwitterUrl(sData.twitter_url || '');
+        setOnlineOrders(onlineOrdersRes.data);
       }
 
-      const { data: dData } = await supabase.from('discounts').select('*').order('created_at', { ascending: false });
-      if (dData) setDiscounts(dData);
+      if (pickupOrdersRes.data) setPickupOrders(pickupOrdersRes.data);
     } catch (err) {
-      console.error("❌ Sync Error:", err);
+      console.error("Fetch Error:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  // --- CHECK AUTHENTICATION ON MOUNT ---
-  useEffect(() => {
-    const session = localStorage.getItem('manager_session');
-    const sessionTime = localStorage.getItem('manager_session_time');
-    if (session && sessionTime) {
-      const now = new Date().getTime();
-      const sessionAge = now - parseInt(sessionTime);
-      if (sessionAge < 24 * 60 * 60 * 1000) {
-        setIsAuthenticated(true);
-      } else {
-        localStorage.removeItem('manager_session');
-        localStorage.removeItem('manager_session_time');
-      }
-    }
-  }, []);
-
+  // ─── REALTIME SUBSCRIPTION ───
   useEffect(() => {
     if (isAuthenticated) {
-      fetchManagerData();
-      const channel = supabase.channel('manager-stable-view')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchManagerData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchManagerData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchManagerData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'discounts' }, fetchManagerData)
+      fetchData();
+      const channel = supabase.channel('staff-os-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchData)
         .subscribe();
       return () => { supabase.removeChannel(channel); };
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, onlineOrders.length]);
 
-  // --- AUTHENTICATION HANDLERS ---
+  // ─── NEW ORDER NOTIFICATION ───
+  const triggerNewOrderNotification = () => {
+    setNewOrderGlow(true);
+    if (audioRef.current) {
+      audioRef.current.play().catch(err => console.log('Audio play failed:', err));
+    }
+    setTimeout(() => setNewOrderGlow(false), 3000);
+  };
+
+  // ─── SIMULATE NEW ORDER (FOR DEMO) ───
+  const simulateNewOrder = async () => {
+    const mockOrder = {
+      customer_name: 'DEMO CUSTOMER',
+      phone_number: '08012345678',
+      address: '123 Demo Street, Lagos',
+      items: 'Milk, Bread, Eggs',
+      grand_total: 1600,
+      status: 'PENDING',
+      payment_method: 'cash',
+      created_at: new Date().toISOString()
+    };
+
+    await supabase.from('orders').insert([mockOrder]);
+    fetchData();
+  };
+
+  // ─── AUTHENTICATION ───
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoggingIn(true);
     setLoginError('');
     try {
-      const { data: settingsData } = await supabase.from('store_settings').select('manager_password').eq('id', 1).single();
-      const dbPassword = settingsData?.manager_password;
-      const masterKey = import.meta.env.VITE_MASTER_RECOVERY_KEY;
+      const { data, error } = await supabase.from('store_settings').select('staff_password').eq('id', 1).single();
+      if (error) throw error;
+
       setTimeout(() => {
-        if (passwordInput === dbPassword || passwordInput === masterKey) {
-          localStorage.setItem('manager_session', 'authenticated');
-          localStorage.setItem('manager_session_time', new Date().getTime().toString());
+        if (passwordInput === data?.staff_password || passwordInput === import.meta.env.VITE_MASTER_KEY) {
+          localStorage.setItem('staff_session', 'authenticated');
+          localStorage.setItem('staff_session_time', new Date().getTime().toString());
           setIsAuthenticated(true);
           setPasswordInput('');
         } else {
-          setLoginError('Incorrect password. Please try again.');
-          setPasswordInput('');
+          setLoginError('Invalid password');
         }
         setIsLoggingIn(false);
-      }, 500);
-    } catch (error) {
-      setLoginError('Login failed. Please try again.');
+      }, 600);
+    } catch (err: any) {
+      setLoginError('Authentication failed');
       setIsLoggingIn(false);
     }
   };
 
   const handleLogout = () => {
     if (confirm('Are you sure you want to logout?')) {
-      localStorage.removeItem('manager_session');
-      localStorage.removeItem('manager_session_time');
+      localStorage.removeItem('staff_session');
+      localStorage.removeItem('staff_session_time');
       setIsAuthenticated(false);
+      setCounterCart([]);
+      setCustomerName('');
+      setCustomerPhone('');
     }
   };
 
-  // ✅ FIXED: Pure UPDATE only — row 1 always exists after running the SQL migration
-  const handleSaveSocials = async () => {
-    setIsSavingSocials(true);
-    try {
-      const { error } = await supabase
-        .from('store_settings')
-        .update({
-          instagram_url: instagramUrl.trim() || null,
-          whatsapp_url: whatsappUrl.trim() || null,
-          twitter_url: twitterUrl.trim() || null,
-        })
-        .eq('id', 1);
+  // ─── COUNTER SALE (POS) FUNCTIONS ───
+  const addToCounter = (product: any) => {
+    const existing = counterCart.find(item => item.productId === product.id);
+    if (existing) {
+      setCounterCart(counterCart.map(item =>
+        item.productId === product.id
+          ? { ...item, quantity: item.quantity + 1 }
+          : item
+      ));
+    } else {
+      setCounterCart([...counterCart, {
+        productId: product.id,
+        name: product.name,
+        price: product.price,
+        quantity: 1
+      }]);
+    }
+  };
 
-      if (error) {
-        console.error('Supabase error:', JSON.stringify(error, null, 2));
-        throw new Error(error.message || error.code || JSON.stringify(error));
+  const updateCounterQuantity = (productId: number, delta: number) => {
+    setCounterCart(counterCart.map(item => {
+      if (item.productId === productId) {
+        const newQty = Math.max(0, item.quantity + delta);
+        return { ...item, quantity: newQty };
       }
-      alert('✅ Social media links saved! They will appear in the store header.');
-      fetchManagerData();
+      return item;
+    }).filter(item => item.quantity > 0));
+  };
+
+  const removeFromCounter = (productId: number) => {
+    setCounterCart(counterCart.filter(item => item.productId !== productId));
+  };
+
+  const counterTotal = counterCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+  const processCounterSale = async () => {
+    if (counterCart.length === 0) {
+      alert('Cart is empty');
+      return;
+    }
+    if (!customerName.trim()) {
+      alert('Please enter customer name');
+      return;
+    }
+
+    setProcessingCheckout(true);
+    try {
+      const itemsString = counterCart.map(item => `${item.name} (${item.quantity}x)`).join(', ');
+
+      const orderData = {
+        customer_name: customerName.toUpperCase(),
+        phone_number: customerPhone || 'N/A',
+        address: null, // null = pickup order
+        items: itemsString,
+        total_price: counterTotal,
+        status: 'READY',
+        payment_status: 'paid',  // Counter sales are paid immediately
+        payment_method: 'cash',
+        created_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase.from('orders').insert([orderData]);
+      if (error) throw error;
+
+      // Deduct stock
+      for (const item of counterCart) {
+        const product = products.find(p => p.id === item.productId);
+        if (product) {
+          const newStock = Math.max(0, (product.stock || 0) - item.quantity);
+          await supabase.from('products').update({ stock: newStock }).eq('id', item.productId);
+        }
+      }
+
+      alert(`✅ Sale completed! Total: ₦${counterTotal.toLocaleString()}`);
+
+      // Reset
+      setCounterCart([]);
+      setCustomerName('');
+      setCustomerPhone('');
+      fetchData();
     } catch (err: any) {
-      console.error('Social save error:', err);
-      alert('❌ Failed to save social links: ' + (err?.message || JSON.stringify(err)));
+      alert('Checkout failed: ' + err.message);
     } finally {
-      setIsSavingSocials(false);
+      setProcessingCheckout(false);
     }
   };
 
-  // --- DISCOUNT HANDLERS ---
-  const handleAddDiscount = async () => {
-    if (!newDiscountCode.trim() || !newDiscountPercent) { alert('Please fill in all fields'); return; }
-    const percent = parseFloat(newDiscountPercent);
-    if (isNaN(percent) || percent < 0 || percent > 100) { alert('Please enter a valid percentage (0-100)'); return; }
+  // ─── ONLINE ORDER STATUS TRANSITIONS ───
+  const updateOrderStatus = async (orderId: number, newStatus: OrderStatus) => {
     try {
-      const { error } = await supabase.from('discounts').insert([{ code_name: newDiscountCode.toUpperCase(), percentage_off: percent, is_active: true }]);
+      const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
       if (error) throw error;
-      setNewDiscountCode('');
-      setNewDiscountPercent('');
-      setShowAddDiscount(false);
-      alert('✅ Discount code added!');
-      fetchManagerData();
+
+      // Update local state immediately (no reload needed)
+      setOnlineOrders(prev => prev.map(o => 
+        o.id === orderId ? { ...o, status: newStatus } : o
+      ));
+      setPickupOrders(prev => prev.map(o => 
+        o.id === orderId ? { ...o, status: newStatus } : o
+      ));
     } catch (err: any) {
-      if (err.code === '23505') alert('❌ This discount code already exists');
-      else alert('❌ Failed to add discount: ' + err.message);
+      alert('Failed to update status: ' + err.message);
     }
   };
 
-  const handleToggleDiscount = async (id: number, currentStatus: boolean) => {
-    try {
-      const { error } = await supabase.from('discounts').update({ is_active: !currentStatus }).eq('id', id);
-      if (error) throw error;
-      fetchManagerData();
-    } catch (err) { alert('❌ Failed to update discount'); }
+  // ─── PRODUCT MANAGEMENT ───
+  const openEditModal = (product: any) => {
+    setEditingProduct(product);
+    setEditForm({
+      name: product.name,
+      price: product.price.toString(),
+      stock: product.stock?.toString() || '0',
+      image_url: product.image_url || product.image || '',
+      category: product.category || ''
+    });
   };
 
-  const handleDeleteDiscount = async (id: number) => {
-    if (!confirm('Delete this discount code?')) return;
-    try {
-      const { error } = await supabase.from('discounts').delete().eq('id', id);
-      if (error) throw error;
-      fetchManagerData();
-    } catch (err) { alert('❌ Failed to delete discount'); }
+  const closeEditModal = () => {
+    setEditingProduct(null);
+    setEditForm({ name: '', price: '', stock: '', image_url: '', category: '' });
   };
 
+  const saveProductEdit = async () => {
+    if (!editingProduct) return;
+    try {
+      const { error } = await supabase.from('products').update({
+        name: editForm.name,
+        price: parseFloat(editForm.price),
+        stock: parseInt(editForm.stock),
+        image: editForm.image_url,
+        image_url: editForm.image_url,
+        category: editForm.category
+      }).eq('id', editingProduct.id);
+
+      if (error) throw error;
+      alert('✅ Product updated!');
+      closeEditModal();
+      fetchData();
+    } catch (err: any) {
+      alert('Update failed: ' + err.message);
+    }
+  };
+
+  const markOutOfStock = async (productId: number) => {
+    if (confirm('Mark this product as out of stock?')) {
+      try {
+        const { error } = await supabase.from('products').update({ stock: 0 }).eq('id', productId);
+        if (error) throw error;
+        fetchData();
+      } catch (err: any) {
+        alert('Failed: ' + err.message);
+      }
+    }
+  };
+
+  // ─── CATEGORY MANAGEMENT ───
+  const handleAddCategory = async () => {
+    if (!newCategoryName) return;
+    const { error } = await supabase.from('categories').insert([{ name: newCategoryName.toUpperCase() }]);
+    if (!error) { setNewCategoryName(''); fetchData(); alert('Category added!'); }
+  };
+
+  const deleteCategory = async (id: number) => {
+    if (!confirm("Delete category? Products using this category will need reassignment.")) return;
+    const { error } = await supabase.from('categories').delete().eq('id', id);
+    if (error) alert("Error: Category may still be in use.");
+    else { fetchData(); alert('Category deleted!'); }
+  };
+
+  // ─── INVENTORY FUNCTIONS ───
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -317,774 +381,881 @@ export default function Manager() {
     if (error) { alert("Upload failed: " + error.message); return; }
     const { data: { publicUrl } } = supabase.storage.from('stock-images').getPublicUrl(fileName);
     setNewProduct((prev: any) => ({ ...prev, image_url: publicUrl }));
-    alert("Image uploaded successfully!");
+    alert("Image uploaded ✓");
   };
 
-  // ✅ FIXED: Pure UPDATE only — row 1 always exists
-  const handleUpdateDeliveryFee = async () => {
-    setIsSavingFee(true);
-    try {
-      const { error } = await supabase
-        .from('store_settings')
-        .update({ delivery_fee_per_km: parseFloat(deliveryFeePerKm) })
-        .eq('id', 1);
-      if (error) throw new Error(error.message);
-      alert('✅ Delivery fee updated successfully!');
-    } catch (err: any) {
-      alert('❌ Failed to update delivery fee: ' + (err?.message || String(err)));
-    } finally {
-      setIsSavingFee(false);
-    }
-  };
-
-  // --- 4. ACTIONS ---
-  const handleAddCategory = async () => {
-    if (!newCategoryName) return;
-    const { error } = await supabase.from('categories').insert([{ name: newCategoryName.toUpperCase() }]);
-    if (!error) { setNewCategoryName(''); fetchManagerData(); }
-  };
-
-  const deleteCategory = async (id: number) => {
-    if (!confirm("Delete category?")) return;
-    const { error } = await supabase.from('categories').delete().eq('id', id);
-    if (error) alert("Error: Category is still in use.");
-    else fetchManagerData();
-  };
-
-  const handleAddProduct = async () => {
-    if (!newName || !newPrice || !newCategory) { alert("Please fill in all fields"); return; }
-    const { error } = await supabase.from('products').insert([{
-      name: newName.toUpperCase(),
-      price: parseFloat(newPrice),
-      category: newCategory,
-      image: newProduct.image_url,
-      stock: parseInt(newStock) || 10
-    }]);
-    if (error) { alert("Upload failed: " + error.message); }
-    else {
-      setNewName(''); setNewPrice(''); setNewCategory(''); setNewStock('10');
-      setNewProduct({ name: '', price: '', image_url: '', category: '', stock: '10' });
-      alert("Product added successfully!");
-      fetchManagerData();
-    }
-  };
-
-  const openEditModal = (product: any) => {
-    setEditingProduct({ id: product.id, name: product.name, price: String(product.price), stock: String(product.stock || 0), category: product.category, image_url: product.image || product.image_url || '' });
-    setShowEditModal(true);
-  };
-
-  const handleEditChange = (field: string, value: string) => {
-    setEditingProduct((prev: any) => ({ ...prev, [field]: value }));
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingProduct) return;
-    if (!editingProduct.name || !editingProduct.price || !editingProduct.category) { alert("Please fill in all required fields"); return; }
-    const priceValue = parseFloat(editingProduct.price);
-    const stockValue = parseInt(editingProduct.stock);
-    if (isNaN(priceValue) || priceValue < 0) { alert("Please enter a valid price"); return; }
-    if (isNaN(stockValue) || stockValue < 0) { alert("Please enter a valid stock quantity"); return; }
-
-    try {
-      const { data, error } = await supabase.from('products')
-        .update({ name: editingProduct.name.toUpperCase(), price: priceValue, stock: stockValue, category: editingProduct.category, image: editingProduct.image_url })
-        .eq('id', editingProduct.id).select().single();
-
-      if (error) { alert("Update failed: " + error.message); return; }
-
-      setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, name: editingProduct.name.toUpperCase(), price: priceValue, stock: stockValue, category: editingProduct.category, image: editingProduct.image_url } : p));
-      alert("✅ Product updated successfully!");
-      setShowEditModal(false);
-      setEditingProduct(null);
-      await fetchManagerData();
-    } catch (err) {
-      alert("An unexpected error occurred.");
-    }
-  };
-
-  const deleteProduct = async (id: number) => {
-    if (!id) { alert("Error: This product has no ID."); return; }
-    if (!confirm("Delete product?")) return;
-    const { error } = await supabase.from('products').delete().eq('id', id);
-    if (error) alert("Delete failed: " + error.message);
-    else { alert("Product deleted successfully!"); fetchManagerData(); }
-  };
-
-  const updateStatus = async (orderId: number, newStatus: string) => {
-    const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
-    if (!error) fetchManagerData();
-  };
-
-  const handleDeleteAllOrders = async () => {
-    if (confirm("THIS WILL WIPE ALL ORDERS. ARE YOU SURE?")) {
-      await supabase.from('orders').delete().neq('id', 0);
-      fetchManagerData();
-    }
-  };
-
-  const handleClearMessages = async () => {
-    if (confirm("Delete ALL support messages?")) {
-      await supabase.from('messages').delete().neq('id', 0);
-      fetchManagerData();
-    }
-  };
-
-  const exportCSV = () => {
-    const headers = "Date,Customer,Phone,Items,Total,Address\n";
-    const rows = orders.map(o => `"${formatOrderDateTime(o.created_at)}",${o.customer_name},"${o.phone_number || 'N/A'}","${o.items}",${o.total_price},"${o.address || 'PICKUP'}"`).join("\n");
-    const blob = new Blob([headers + rows], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `sales_report_${new Date().toLocaleDateString()}.csv`;
-    a.click();
-  };
-
-  const handleReplaceImageUrl = async (id: number, event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleReplaceProductImage = async (id: number, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     const fileName = `${Date.now()}-${file.name}`;
     const { error: uploadError } = await supabase.storage.from('stock-images').upload(fileName, file);
     if (uploadError) return alert(uploadError.message);
     const { data: { publicUrl } } = supabase.storage.from('stock-images').getPublicUrl(fileName);
-    const { error: dbError } = await supabase.from('products').update({ image: publicUrl }).eq('id', id);
-    if (!dbError) fetchManagerData();
+    const { error: dbError } = await supabase.from('products').update({ image: publicUrl, image_url: publicUrl }).eq('id', id);
+    if (!dbError) fetchData();
   };
 
-  // --- LOGIN SCREEN ---
+  const handleAddProduct = async () => {
+    if (!newName || !newPrice || !newCategory) { alert("Please fill in product name, price, and category"); return; }
+    const { error } = await supabase.from('products').insert([{
+      name: newName.toUpperCase(),
+      price: parseFloat(newPrice),
+      category: newCategory,
+      image: newProduct.image_url || 'https://via.placeholder.com/400',
+      image_url: newProduct.image_url || 'https://via.placeholder.com/400',
+      stock: parseInt(newStock) || 10
+    }]);
+    if (error) { alert("Failed to add product: " + error.message); }
+    else {
+      setNewName(''); setNewPrice(''); setNewCategory(''); setNewStock('10');
+      setNewProduct({ name: '', price: '', image_url: '', category: '', stock: '10' });
+      fetchData(); alert("Product added!");
+    }
+  };
+
+  const deleteProduct = async (id: number) => {
+    if (!confirm("Delete this product?")) return;
+    const { error} = await supabase.from('products').delete().eq('id', id);
+    if (error) alert("Delete failed: " + error.message);
+    else { fetchData(); alert("Product deleted!"); }
+  };
+
+  // ─── FILTERS ───
+
+  // ─── PAYMENT TRACKING ───
+  const deliveredUnpaidOrders = onlineOrders.filter(o => 
+    o.status === 'DONE' && 
+    o.payment_status === 'unpaid'
+  );
+  const cashInField = deliveredUnpaidOrders.reduce((sum, order) => sum + (order.total_price || 0), 0);
+
+  const confirmPaymentReceived = async (orderId: number) => {
+    if (!confirm('Confirm payment received from driver?')) return;
+    try {
+      const { error } = await supabase.from('orders').update({ payment_status: 'paid' }).eq('id', orderId);
+      if (error) throw error;
+
+      // Update local state immediately (no reload needed)
+      setOnlineOrders(prev => prev.map(o => 
+        o.id === orderId ? { ...o, payment_status: 'paid' } : o
+      ));
+
+      alert('✅ Payment confirmed!');
+    } catch (err: any) {
+      alert('Failed: ' + err.message);
+    }
+  };
+
+  const filteredProducts = products.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = selectedCategory === 'All' || p.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
+
+  const inventoryFilteredProducts = products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    .sort((a, b) => {
+      if (sortBy === 'PRICE_LOW') return a.price - b.price;
+      if (sortBy === 'PRICE_HIGH') return b.price - a.price;
+      if (sortBy === 'STOCK_LOW') return (a.stock || 0) - (b.stock || 0);
+      if (sortBy === 'CATEGORY') return (a.category || '').localeCompare(b.category || '');
+      return 0;
+    });
+
+  const filteredPickupOrders = pickupOrders.filter(o => orderFilter === 'ALL' || o.status === orderFilter);
+
+  const pendingCount = onlineOrders.filter(o => o.status === 'PENDING').length + pickupOrders.filter(o => o.status === 'PENDING').length;
+  const preparingCount = onlineOrders.filter(o => o.status === 'PREPARING').length + pickupOrders.filter(o => o.status === 'PREPARING').length;
+  const readyCount = onlineOrders.filter(o => o.status === 'READY').length + pickupOrders.filter(o => o.status === 'READY').length;
+
+  // ══════════════════════════════════════════════════════════════
+  // LOGIN SCREEN
+  // ══════════════════════════════════════════════════════════════
+
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-6 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 via-transparent to-transparent pointer-events-none" />
-        <div className="absolute top-20 left-20 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-orange-500/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="bg-zinc-950/80 backdrop-blur-xl border border-zinc-800 p-12 rounded-3xl shadow-2xl max-w-md w-full relative z-10 animate-in fade-in zoom-in duration-500">
-          <div className="flex justify-center mb-8">
-            <div className="bg-orange-500/10 p-4 rounded-2xl">
-              <LayoutDashboard className="text-orange-500" size={40} />
+      <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center p-6">
+        <div className="w-full max-w-md bg-[#242424] border border-zinc-800 rounded-2xl p-8 shadow-2xl">
+          <div className="flex items-center justify-center mb-6">
+            <div className="w-16 h-16 bg-[#ff8c00] rounded-xl flex items-center justify-center">
+              <ShoppingCart size={32} className="text-black" />
             </div>
           </div>
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-black italic uppercase tracking-tighter text-white mb-2">Manager Access</h1>
-            <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Authorized Personnel Only</p>
-          </div>
-          <form onSubmit={handleLogin} className="space-y-6">
+          <h1 className="text-2xl font-black text-white text-center mb-2 uppercase tracking-tight">Staff Portal</h1>
+          <p className="text-zinc-500 text-sm text-center mb-8 tracking-wide">Supermarket Operating System</p>
+
+          <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="text-xs font-black text-zinc-500 uppercase tracking-wider mb-2 block">Password</label>
-              <input type="password" value={passwordInput} onChange={(e) => { setPasswordInput(e.target.value); setLoginError(''); }} placeholder="Enter manager password" className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-4 text-sm font-medium text-white placeholder:text-zinc-600 outline-none focus:border-orange-500 transition-all" disabled={isLoggingIn} autoFocus />
+              <label className="block text-zinc-400 text-xs font-bold mb-2 uppercase tracking-wider">Access Code</label>
+              <input
+                type="password"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                className="w-full bg-[#1a1a1a] border border-zinc-700 text-white px-4 py-3 rounded-xl focus:outline-none focus:border-[#ff8c00] transition-colors"
+                placeholder="Enter staff password"
+                disabled={isLoggingIn}
+              />
             </div>
-            {loginError && <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3"><p className="text-red-500 text-xs font-bold text-center">{loginError}</p></div>}
-            <button type="submit" disabled={!passwordInput || isLoggingIn} className="w-full bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 disabled:cursor-not-allowed text-white py-4 rounded-xl font-black uppercase text-sm tracking-widest transition-all active:scale-95">
-              {isLoggingIn ? <div className="flex items-center justify-center gap-2"><div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /><span>Verifying...</span></div> : 'Access Dashboard'}
+
+            {loginError && (
+              <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+                <AlertCircle size={16} />
+                {loginError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoggingIn}
+              className="w-full bg-[#ff8c00] hover:bg-[#ff9f1a] text-black font-black py-4 rounded-xl uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoggingIn ? 'Authenticating...' : 'Access System'}
             </button>
           </form>
-          <div className="mt-8 pt-6 border-t border-zinc-800">
-            <p className="text-center text-zinc-600 text-[9px] font-medium uppercase tracking-widest">Secure Manager Portal</p>
-          </div>
         </div>
       </div>
     );
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // MAIN DASHBOARD
+  // ══════════════════════════════════════════════════════════════
+
   return (
-    <>
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #18181b; border-radius: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #f97316; }
-      `}</style>
+    <div className="min-h-screen bg-[#1a1a1a] text-white">
 
-      <div className="min-h-screen bg-black text-white p-4 md:p-6 lg:p-8 font-sans">
-        <div className="max-w-7xl mx-auto">
-          {/* HEADER */}
-          <header className="mb-8 border-b border-zinc-900 pb-6">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-              <div className="flex items-center gap-3">
-                <LayoutDashboard className="text-orange-500" size={28} />
-                <h1 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter">Inventory & Sales</h1>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button onClick={() => setShowAddresses(!showAddresses)} className={`px-3 py-2 rounded-xl text-xs font-black uppercase transition-all ${showAddresses ? 'bg-orange-500 text-black' : 'bg-zinc-900 text-zinc-500 hover:bg-zinc-800'}`}>
-                  {showAddresses ? 'Hide Addresses' : 'Show Addresses'}
-                </button>
-                <button onClick={handleDeleteAllOrders} className="flex items-center gap-2 bg-red-900/20 text-red-500 px-3 py-2 rounded-xl text-xs font-bold uppercase hover:bg-red-600 hover:text-white transition-all">
-                  <AlertTriangle size={12} /> Clear Orders
-                </button>
-                <button onClick={handleClearMessages} className="flex items-center gap-2 bg-zinc-900 text-zinc-400 px-3 py-2 rounded-xl text-xs font-bold uppercase hover:bg-orange-500 hover:text-white transition-all">
-                  <Trash2 size={12} /> Clear Messages
-                </button>
-                <button onClick={exportCSV} className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-xl text-xs font-black uppercase hover:bg-white hover:text-black transition-all">
-                  <Download size={12} /> Export CSV
-                </button>
-                <button onClick={handleLogout} className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-xl text-xs font-black uppercase hover:bg-red-600 hover:border-red-600 hover:text-white transition-all">
-                  <X size={12} /> Logout
-                </button>
-              </div>
+      {/* Hidden audio for notification */}
+      <audio ref={audioRef}>
+        <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZSA0PVqzn77BdGAg+ltryxnMpBSuAzu/cjToJGGS57OihUBELTKXh8bllHAU2jdXzzn0uBSV6yO/ekEIJE12y6OytWRcJP5fZ8sh0KwUthM/v3Y4+CRdpvO3mnE0ODFGn4/G1ZB0FN4/W88x9LgUme8rx3I9ECRNdr+nvrVgXCUCY2fLJdiwFLoXP7t2PQAkWaMDu4JpLDQxPqePwtWMcBTmO1fPMfi8GJ37K79+RRQoSXbDp7K1aGAhBmNryyXUsBS+F0O7dj0AIFmjA7eCaSw0MUKjj8LRjHAU6jtXzzH4vBih+yO/ejkUKEl6w6eyvWhcJQpja8sl0LAUwiNDu3Y5BCBZowO3nmkoPDFCo4/C0YhwFO47W88yALgYof8rs3Y5GDBJdsOnrr1oXCUKZ2vLJdiwFMIfR7duNQAgXadTu3ZRFDA5Rq+PysmMcBjqN1vLNgC8FKH/K7N2PQwsTXbDo7K9aGAhDmtrxyXQrBS+I0e7djkEJF2fU7d6UQw0LUqzj8rRiHQU6jtXzzYEvBSiAyu3dkEQNE12v6O2vWhgIQ5nb8sh0KgYviNHu3Y9ACBdm1O3flEkMDlKs5PKzYhwFOo7W881/LwYogcvt3I5FDRNdr+nur1kXCUSZ2vLJdSwGMIjQ7t2OQQgWZ9Xs3JFGCw5RrOPy3YxBCUOZ2/LIcysGMIjR7tyOQQkXZdXt3JNFCw5RrOPytmQdBTqO1vLMgC4GKH/K7d2PQwwUXK/p7K9aGQhDmdvxxnUsBjCG0e7djkIIGGnU7NyPRAkLU6rj87JiHQc5j9XzzH4uBSh/y+3ejkMNEl2v6O2wWhgHRJrc8Ml0LAUwh9Lu3Y9ACBdm1O7dj0MMDQ==" type="audio/wav" />
+      </audio>
+
+      {/* ══ TOP NAV ══ */}
+      <nav className="bg-[#242424] border-b border-zinc-800 px-6 py-4 sticky top-0 z-50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-[#ff8c00] rounded-lg flex items-center justify-center">
+              <ShoppingCart size={24} className="text-black" />
             </div>
-
-            {/* TAB NAVIGATION */}
-            <div className="flex gap-2 mb-6 border-b border-zinc-900">
-              <button onClick={() => setActiveTab('dashboard')} className={`px-6 py-3 rounded-t-xl text-sm font-black uppercase transition-all ${activeTab === 'dashboard' ? 'bg-zinc-950 border border-b-0 border-zinc-900 text-white' : 'text-zinc-600 hover:text-zinc-400'}`}>📊 Dashboard</button>
-              <button onClick={() => setActiveTab('payments')} className={`px-6 py-3 rounded-t-xl text-sm font-black uppercase transition-all ${activeTab === 'payments' ? 'bg-zinc-950 border border-b-0 border-zinc-900 text-white' : 'text-zinc-600 hover:text-zinc-400'}`}>💰 Payments</button>
-              <button onClick={() => setActiveTab('settings')} className={`px-6 py-3 rounded-t-xl text-sm font-black uppercase transition-all ${activeTab === 'settings' ? 'bg-zinc-950 border border-b-0 border-zinc-900 text-white' : 'text-zinc-600 hover:text-zinc-400'}`}>⚙️ Settings</button>
+            <div>
+              <h1 className="text-xl font-black uppercase tracking-tight">Staff OS</h1>
+              <p className="text-xs text-zinc-500 tracking-wider">Point of Sale System</p>
             </div>
-            {/* ===================== PAYMENTS TAB ===================== */}
-            {activeTab === 'payments' ? (
-              <div className="space-y-6">
-                {/* CASH IN FIELD METRIC */}
-                <div className="bg-gradient-to-br from-orange-500/10 to-red-500/10 border-2 border-orange-500/30 p-6 md:p-8 rounded-2xl">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div>
-                      <p className="text-xs font-black uppercase text-orange-400 mb-2">💵 Cash Currently in Field</p>
-                      <p className="text-4xl md:text-5xl font-black text-orange-500">₦{cashInField.toLocaleString()}</p>
-                      <p className="text-xs text-zinc-400 mt-2">
-                        From {deliveredUnpaidOrders.length} delivered order{deliveredUnpaidOrders.length !== 1 ? 's' : ''} awaiting collection
-                      </p>
-                    </div>
-                    <div className="bg-orange-500/20 p-4 rounded-xl">
-                      <svg className="w-16 h-16 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
+          </div>
 
-                {/* UNPAID ORDERS LIST */}
-                <div className="bg-zinc-950 border border-zinc-900 rounded-2xl overflow-hidden">
-                  <div className="p-5 border-b border-zinc-900 bg-zinc-900/20">
-                    <h2 className="text-sm font-black uppercase flex items-center gap-2">
-                      <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      Awaiting Payment Confirmation
-                    </h2>
-                  </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={simulateNewOrder}
+              className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors"
+            >
+              <Bell size={14} className="inline mr-2" />
+              Test Alert
+            </button>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-2"
+            >
+              <LogOut size={14} />
+              Logout
+            </button>
+          </div>
+        </div>
 
-                  {deliveredUnpaidOrders.length === 0 ? (
-                    <div className="p-16 text-center">
-                      <svg className="w-16 h-16 text-green-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <p className="text-sm font-black uppercase text-zinc-600">All Payments Collected!</p>
-                      <p className="text-xs text-zinc-700 mt-2">No outstanding cash to reconcile</p>
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-zinc-900">
-                      {deliveredUnpaidOrders.map(order => (
-                        <div key={order.id} className="p-5 hover:bg-white/[0.02] transition-colors">
-                          <div className="flex flex-col md:flex-row md:items-center gap-4">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-2">
-                                <span className="text-lg font-black text-orange-500">Order #{order.id}</span>
-                                <span className="px-2 py-1 bg-orange-500/20 text-orange-400 text-[10px] font-black uppercase rounded">
-                                  💳 Unpaid
-                                </span>
-                              </div>
-                              <p className="text-sm font-bold text-white mb-1">{order.customer_name}</p>
-                              <p className="text-xs text-zinc-500 flex items-center gap-2">
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                                </svg>
-                                {order.phone_number}
-                              </p>
-                              <p className="text-xs text-zinc-600 mt-1">{formatOrderDateTime(order.created_at)}</p>
-                            </div>
+        {/* View Tabs */}
+        <div className="flex gap-2 mt-4 overflow-x-auto">
+          <button
+            onClick={() => setActiveView('pos')}
+            className={`px-5 py-2.5 rounded-lg font-bold text-sm uppercase tracking-wider transition-colors whitespace-nowrap ${
+              activeView === 'pos' ? 'bg-[#ff8c00] text-black' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+            }`}
+          >
+            <ShoppingCart size={16} className="inline mr-2" />
+            POS / Counter
+          </button>
+          <button
+            onClick={() => setActiveView('inventory')}
+            className={`px-5 py-2.5 rounded-lg font-bold text-sm uppercase tracking-wider transition-colors whitespace-nowrap ${
+              activeView === 'inventory' ? 'bg-[#ff8c00] text-black' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+            }`}
+          >
+            <Package size={16} className="inline mr-2" />
+            Inventory
+          </button>
+          <button
+            onClick={() => setActiveView('categories')}
+            className={`px-5 py-2.5 rounded-lg font-bold text-sm uppercase tracking-wider transition-colors whitespace-nowrap ${
+              activeView === 'categories' ? 'bg-[#ff8c00] text-black' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+            }`}
+          >
+            <PlusCircle size={16} className="inline mr-2" />
+            Categories
+          </button>
+          <button
+            onClick={() => setActiveView('orders')}
+            className={`px-5 py-2.5 rounded-lg font-bold text-sm uppercase tracking-wider transition-colors whitespace-nowrap ${
+              activeView === 'orders' ? 'bg-[#ff8c00] text-black' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+            }`}
+          >
+            <ShoppingBag size={16} className="inline mr-2" />
+            Pickup Orders {pendingCount > 0 && `(${pendingCount})`}
+          </button>
+          <button
+            onClick={() => setActiveView('payments')}
+            className={`px-5 py-2.5 rounded-lg font-bold text-sm uppercase tracking-wider transition-colors whitespace-nowrap ${
+              activeView === 'payments' ? 'bg-[#ff8c00] text-black' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+            }`}
+          >
+            <DollarSign size={16} className="inline mr-2" />
+            Payments
+          </button>
+        </div>
+      </nav>
 
-                            <div className="text-right">
-                              <p className="text-2xl md:text-3xl font-black text-orange-500 mb-3">
-                                ₦{(order.total_price || 0).toLocaleString()}
-                              </p>
-                              <button
-                                onClick={() => confirmPaymentReceived(order.id)}
-                                className="w-full md:w-auto px-6 py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl font-black uppercase text-xs tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                Confirm Payment
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : activeTab === 'settings' ? (
-              <div className="space-y-6">
-                {/* ===================== SETTINGS TAB ===================== */}
-                <SettingsTab onSettingsSaved={fetchManagerData} />
-
-                {/* Delivery Fee Settings */}
-                <div className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl">
-                  <h3 className="text-xs font-black uppercase text-orange-500 mb-4 flex items-center gap-2">
-                    <DollarSign size={12} /> Delivery Fee Settings
-                  </h3>
-                  <div className="flex gap-2">
-                    <div className="flex-1">
-                      <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Fee Per Kilometer (₦)</label>
-                      <input type="number" value={deliveryFeePerKm} onChange={(e) => setDeliveryFeePerKm(e.target.value)} placeholder="150" className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-black uppercase outline-none focus:border-orange-500" />
-                    </div>
-                    <button onClick={handleUpdateDeliveryFee} disabled={isSavingFee} className="bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 text-white px-6 rounded-xl text-xs font-black uppercase transition-all self-end py-3">
-                      {isSavingFee ? 'Saving...' : 'Save'}
-                    </button>
-                  </div>
-                  <p className="text-xs text-zinc-600 mt-3 italic">This rate is shown to customers during checkout. Actual fee is calculated on delivery.</p>
-                </div>
-
-                {/* Social Media Links */}
-                <div className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl">
-                  <h3 className="text-xs font-black uppercase text-orange-500 mb-1 flex items-center gap-2">
-                    <Settings size={12} /> Social Media Links
-                  </h3>
-                  <p className="text-xs text-zinc-500 mb-4">These icons appear in the <strong className="text-white">store header navbar</strong> for customers.</p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <label className="text-xs font-bold text-zinc-500 uppercase mb-2 flex items-center gap-2">
-                        <InstagramIcon size={12} className="text-pink-500" /> Instagram URL
-                      </label>
-                      <input type="url" value={instagramUrl} onChange={(e) => setInstagramUrl(e.target.value)} placeholder="https://instagram.com/yourstore" className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-medium outline-none focus:border-pink-500 transition-all" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-zinc-500 uppercase mb-2 flex items-center gap-2">
-                        <WhatsAppIcon size={12} className="text-green-500" /> WhatsApp URL
-                      </label>
-                      <input type="url" value={whatsappUrl} onChange={(e) => setWhatsappUrl(e.target.value)} placeholder="https://wa.me/234XXXXXXXXXX" className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-medium outline-none focus:border-green-500 transition-all" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-zinc-500 uppercase mb-2 flex items-center gap-2">
-                        <TwitterXIcon size={12} className="text-sky-400" /> Twitter / X URL
-                      </label>
-                      <input type="url" value={twitterUrl} onChange={(e) => setTwitterUrl(e.target.value)} placeholder="https://twitter.com/yourstore" className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-medium outline-none focus:border-sky-500 transition-all" />
-                    </div>
-                  </div>
-                  <button onClick={handleSaveSocials} disabled={isSavingSocials} className="w-full bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 text-white py-3 rounded-xl text-xs font-black uppercase transition-all flex items-center justify-center gap-2">
-                    {isSavingSocials ? <><div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /> Saving...</> : '💾 Save Social Links'}
-                  </button>
-                </div>
-
-                {/* Discount Codes */}
-                <div className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-xs font-black uppercase text-orange-500 flex items-center gap-2"><Tag size={12} /> Discount Codes</h3>
-                      <p className="text-xs text-zinc-600 mt-1">Create and manage promo codes for customers</p>
-                    </div>
-                    <button onClick={() => setShowAddDiscount(!showAddDiscount)} className="bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase transition-all flex items-center gap-2">
-                      <PlusCircle size={12} /> {showAddDiscount ? 'Cancel' : 'Add Code'}
-                    </button>
-                  </div>
-
-                  {showAddDiscount && (
-                    <div className="bg-black/40 border border-purple-500/30 p-4 rounded-xl mb-4 animate-in slide-in-from-top-2 fade-in">
-                      <p className="text-xs font-black text-purple-400 uppercase mb-3">🎉 New Discount Code</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                        <div>
-                          <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Code Name</label>
-                          <input type="text" value={newDiscountCode} onChange={(e) => setNewDiscountCode(e.target.value.toUpperCase())} placeholder="e.g. SAVE20" className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-black uppercase outline-none focus:border-purple-500 tracking-widest" />
-                        </div>
-                        <div>
-                          <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Percentage Off (%)</label>
-                          <input type="number" value={newDiscountPercent} onChange={(e) => setNewDiscountPercent(e.target.value)} placeholder="e.g. 20" min="0" max="100" className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-black uppercase outline-none focus:border-purple-500" />
-                        </div>
-                      </div>
-                      <button onClick={handleAddDiscount} className="w-full bg-purple-600 hover:bg-purple-500 text-white py-3 rounded-xl text-xs font-black uppercase transition-all">✨ Create Discount Code</button>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    {discounts.length === 0 ? (
-                      <div className="text-center py-10 border border-dashed border-zinc-800 rounded-xl">
-                        <Tag size={32} className="text-zinc-800 mx-auto mb-3" />
-                        <p className="text-zinc-600 text-xs font-bold uppercase">No discount codes yet</p>
-                      </div>
-                    ) : (
-                      discounts.map(discount => (
-                        <div key={discount.id} className="bg-black/40 border border-zinc-900 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 group hover:border-purple-500/30 transition-all">
-                          <div className="flex items-center gap-4">
-                            <div className={`px-3 py-2 rounded-lg min-w-[80px] text-center ${discount.is_active ? 'bg-green-600/20 border border-green-600/30 text-green-500' : 'bg-zinc-900 border border-zinc-800 text-zinc-600'}`}>
-                              <p className="text-sm font-black uppercase tracking-wider">{discount.code_name}</p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <div className="flex items-center gap-1">
-                                <Percent size={14} className="text-purple-500" />
-                                <p className="text-2xl font-black text-purple-500">{discount.percentage_off}</p>
-                                <p className="text-xs font-black text-purple-400 mt-1">OFF</p>
-                              </div>
-                              <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full ${discount.is_active ? 'bg-green-600/10 text-green-500 border border-green-600/20' : 'bg-zinc-800 text-zinc-600 border border-zinc-700'}`}>
-                                {discount.is_active ? '● ACTIVE' : '○ INACTIVE'}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 sm:ml-auto">
-                            <button onClick={() => handleToggleDiscount(discount.id, discount.is_active)} className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all active:scale-95 ${discount.is_active ? 'bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600 hover:text-white border border-yellow-600/30' : 'bg-green-600/20 text-green-500 hover:bg-green-600 hover:text-white border border-green-600/30'}`}>
-                              {discount.is_active ? 'Deactivate' : 'Activate'}
-                            </button>
-                            <button onClick={() => handleDeleteDiscount(discount.id)} className="text-zinc-600 hover:text-red-500 p-2 transition-colors rounded-lg hover:bg-red-500/10">
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* FILTERS */}
-                <div className="bg-zinc-950/50 border border-zinc-900 rounded-2xl p-3 md:p-4 mb-6">
-                  <div className="mb-3 md:mb-4 pb-3 md:pb-4 border-b border-zinc-800/50">
-                    <div className="flex items-center gap-2 mb-2 md:mb-3">
-                      <Filter size={12} className="text-orange-500" />
-                      <span className="text-[9px] md:text-[10px] font-black text-zinc-600 uppercase tracking-wider">Order Type</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {['PICKUP', 'DELIVERY', 'ALL'].map((type) => (
-                        <button key={type} onClick={() => setOrderTypeFilter(type as any)} className={`py-2.5 md:py-3 rounded-xl text-[10px] md:text-xs font-black transition-all active:scale-95 ${orderTypeFilter === type ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/20' : 'bg-zinc-900/50 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-400'}`}>
-                          <span className="hidden sm:inline">{type === 'PICKUP' ? '📦 PICKUP' : type === 'DELIVERY' ? '🚚 DELIVERY' : '🔍 ALL'}</span>
-                          <span className="sm:hidden">{type === 'PICKUP' ? '📦' : type === 'DELIVERY' ? '🚚' : '🔍'}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 md:gap-4">
-                    <div>
-                      <span className="text-[9px] md:text-[10px] font-black text-zinc-600 uppercase tracking-wider mb-2 block">Status</span>
-                      <div className="flex flex-wrap gap-1.5 md:gap-2">
-                        {['ALL', 'PENDING', 'PREPARING', 'READY', 'DONE'].map((status) => (
-                          <button key={status} onClick={() => setFilterStatus(status)} className={`px-2.5 md:px-3 py-1.5 rounded-lg text-[9px] md:text-[10px] font-black transition-all active:scale-95 ${filterStatus === status ? 'bg-white text-black' : 'bg-zinc-900/50 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400'}`}>{status}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-[9px] md:text-[10px] font-black text-zinc-600 uppercase tracking-wider mb-2 block">Time Period</span>
-                      <div className="flex flex-wrap gap-1.5 md:gap-2">
-                        {[{ id: '24H', label: '24H' }, { id: 'WEEK', label: 'WEEK' }, { id: 'MONTH', label: 'MONTH' }, { id: 'YEAR', label: 'YEAR' }, { id: 'ALL_TIME', label: 'ALL' }].map((range) => (
-                          <button key={range.id} onClick={() => setDateFilter(range.id)} className={`px-2.5 md:px-3 py-1.5 rounded-lg text-[9px] md:text-[10px] font-black transition-all active:scale-95 ${dateFilter === range.id ? 'bg-white text-black' : 'bg-zinc-900/50 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400'}`}>{range.label}</button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* STATS */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-                  <div className="bg-zinc-950 border border-zinc-900 p-4 md:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between">
-                    <div><p className="text-[10px] md:text-xs font-black text-zinc-500 uppercase mb-1">Revenue</p><p className="text-xl md:text-2xl lg:text-3xl font-black text-orange-500 italic">₦{(totalRevenue / 1000).toFixed(0)}K</p></div>
-                    <DollarSign className="text-zinc-800 hidden md:block" size={36} />
-                  </div>
-                  <div className="bg-zinc-950 border border-zinc-900 p-4 md:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between">
-                    <div><p className="text-[10px] md:text-xs font-black text-zinc-500 uppercase mb-1">Orders</p><p className="text-xl md:text-2xl lg:text-3xl font-black text-white italic">{filteredOrders.length}</p></div>
-                    <ShoppingBag className="text-zinc-800 hidden md:block" size={36} />
-                  </div>
-                  <div className="bg-zinc-950 border border-zinc-900 p-4 md:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between cursor-pointer hover:border-green-500/30 transition-all group active:scale-95" onClick={() => setShowCategoryBreakdown(!showCategoryBreakdown)}>
-                    <div><p className="text-[10px] md:text-xs font-black text-zinc-500 uppercase mb-1 group-hover:text-green-500 transition-colors">Stock</p><p className="text-xl md:text-2xl lg:text-3xl font-black text-green-500 italic">₦{(totalStockValue / 1000).toFixed(0)}K</p><p className="text-[8px] md:text-[9px] text-zinc-600 font-bold mt-1 uppercase">Tap for details</p></div>
-                    <PackagePlus className="text-zinc-800 group-hover:text-green-500/20 transition-colors hidden md:block" size={36} />
-                  </div>
-                  <div className="bg-zinc-950 border border-zinc-900 p-4 md:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between">
-                    <div><p className="text-[10px] md:text-xs font-black text-zinc-500 uppercase mb-1">Items</p><p className="text-xl md:text-2xl lg:text-3xl font-black text-blue-500 italic">{totalStockItems}</p></div>
-                    <Package className="text-zinc-800 hidden md:block" size={36} />
-                  </div>
-                </div>
-
-                {/* CATEGORY BREAKDOWN */}
-                {showCategoryBreakdown && (
-                  <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 md:p-6 mb-6 animate-in slide-in-from-top-2 fade-in">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-xs md:text-sm font-black uppercase text-green-500 flex items-center gap-2"><PackagePlus size={14} /> Stock by Category</h3>
-                      <button onClick={() => setShowCategoryBreakdown(false)} className="text-zinc-600 hover:text-white transition-colors p-2"><X size={18} /></button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {stockByCategory.map((cat, idx) => (
-                        <div key={cat.name} className="bg-black/40 border border-zinc-900 p-4 rounded-xl hover:border-green-500/30 transition-all">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex-1"><p className="text-xs md:text-sm font-black uppercase text-white mb-1 line-clamp-1">{cat.name}</p><p className="text-[9px] md:text-[10px] text-zinc-600 font-bold uppercase">{cat.productCount} Product{cat.productCount !== 1 ? 's' : ''}</p></div>
-                            <div className="bg-green-500/10 px-2 py-1 rounded-lg flex-shrink-0 ml-2"><p className="text-[9px] md:text-[10px] font-black text-green-500">#{idx + 1}</p></div>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center"><span className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase">Value</span><span className="text-base md:text-lg font-black text-green-500">₦{cat.totalValue.toLocaleString()}</span></div>
-                            <div className="flex justify-between items-center pt-2 border-t border-zinc-900"><span className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase">Stock</span><span className="text-sm md:text-base font-black text-blue-500">{cat.totalItems}</span></div>
-                          </div>
-                          <div className="mt-3">
-                            <div className="h-1.5 md:h-1 bg-zinc-900 rounded-full overflow-hidden">
-                              <div className="h-full bg-gradient-to-r from-green-500 to-green-400 transition-all duration-500" style={{ width: `${totalStockValue > 0 ? (cat.totalValue / totalStockValue) * 100 : 0}%` }} />
-                            </div>
-                            <p className="text-[8px] md:text-[9px] text-zinc-600 font-bold mt-1 text-right">{totalStockValue > 0 ? ((cat.totalValue / totalStockValue) * 100).toFixed(1) : 0}% of total</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </header>
-
-          {/* MAIN CONTENT - Dashboard only */}
-          {activeTab === 'dashboard' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* LEFT SIDEBAR */}
-              <div className="lg:col-span-1 space-y-6">
-                {/* CATEGORIES */}
-                <section className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl">
-                  <h2 className="text-xs font-black uppercase text-orange-500 mb-4 flex items-center gap-2"><PlusCircle size={12} /> Categories</h2>
-                  <div className="flex gap-2 mb-4">
-                    <input value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="NAME..." className="flex-1 bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs font-black uppercase outline-none focus:border-orange-500" />
-                    <button onClick={handleAddCategory} className="bg-white text-black p-2 rounded-xl"><Save size={16} /></button>
-                  </div>
-                  <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
-                    {categories.map(c => (
-                      <div key={c.id} className="flex justify-between items-center bg-black/40 border border-zinc-900 px-3 py-2 rounded-xl">
-                        <span className="text-xs font-black uppercase">{c.name}</span>
-                        <button onClick={() => deleteCategory(c.id)} className="text-zinc-800 hover:text-red-500"><Trash2 size={12} /></button>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                {/* MESSAGES */}
-                {msgs.map((m: any) => (
-                  <div key={m.id} className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl group relative">
-                    <button onClick={async () => { if (confirm("Delete this message?")) { await supabase.from('messages').delete().eq('id', m.id); fetchManagerData(); } }} className="absolute top-4 right-4 text-zinc-700 hover:text-red-500 transition-colors">
-                      <Trash2 size={14} />
-                    </button>
-                    <div className="flex justify-between items-start mb-3">
-                      <span className="text-xs font-black text-white bg-zinc-900 px-3 py-1 rounded-full uppercase italic">{m.name}</span>
-                      <span className="text-zinc-600 text-xs font-bold mr-6">{new Date(m.created_at).toLocaleDateString()}</span>
-                    </div>
-                    <p className="text-xs text-zinc-500 mb-3 font-bold lowercase tracking-tight">{m.email}</p>
-                    <div className="bg-black p-3 rounded-xl border border-zinc-900 group-hover:border-orange-500/30 transition-colors">
-                      <p className="text-xs text-zinc-300 leading-relaxed italic font-medium">"{m.message}"</p>
-                    </div>
-                    <a href={`mailto:${m.email}?subject=Support`} className="mt-3 inline-block text-xs font-black uppercase text-orange-500 hover:text-orange-400">Reply to {m.name} →</a>
-                  </div>
-                ))}
-
-                {/* INVENTORY TOGGLE */}
-                <button onClick={() => setShowInventory(!showInventory)} className="w-full py-3 bg-zinc-900/50 border border-zinc-800 rounded-2xl flex items-center justify-center gap-3 hover:bg-orange-600/10 hover:border-orange-500/50 transition-all group">
-                  <div className={`p-1 rounded-full transition-colors ${showInventory ? 'bg-orange-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>
-                    {showInventory ? <ChevronUp size={14} /> : <PackagePlus size={14} />}
-                  </div>
-                  <span className="text-[10px] font-black uppercase tracking-[0.15em]">{showInventory ? "Hide Inventory" : "Manage Inventory"}</span>
-                </button>
-              </div>
-
-              {/* RIGHT CONTENT - ORDERS */}
-              <div className="lg:col-span-2">
-                <section className="bg-zinc-950 border border-zinc-900 rounded-2xl overflow-hidden">
-                  <div className="p-6 border-b border-zinc-900 bg-zinc-900/20">
-                    <h2 className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
-                      <Clock size={12} className="text-orange-500" /> Recent Sales ({orderTypeFilter})
-                    </h2>
-                  </div>
-                  <div className="divide-y divide-zinc-900 max-h-[600px] overflow-y-auto custom-scrollbar">
-                    {filteredOrders.length === 0 ? (
-                      <div className="p-20 text-center opacity-20">
-                        <p className="text-xs font-black uppercase tracking-widest">No orders found</p>
-                      </div>
-                    ) : (
-                      filteredOrders.map(order => {
-                        const isPickup = !order.address || order.address === null;
-                        return (
-                          <div key={order.id} className="p-5 hover:bg-white/5 transition-colors group">
-                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-3">
-                              <div className="flex items-center gap-3">
-                                <div className="bg-black border border-zinc-800 px-2 py-1 rounded-lg">
-                                  <p className="text-xs font-black uppercase tracking-tighter">#{order.id}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs font-black italic uppercase">{order.customer_name}</p>
-                                  {/* ✅ Full date & time displayed clearly */}
-                                  <p className="text-xs font-bold text-orange-400 mt-1 flex items-center gap-1">
-                                    <Clock size={10} className="text-orange-500" />
-                                    {formatOrderDateTime(order.created_at)}
-                                  </p>
-                                  {order.phone_number && (
-                                    <p className="text-xs text-green-500 font-bold mt-1">📞 {order.phone_number}</p>
-                                  )}
-                                  <span className={`inline-block mt-2 px-2 py-1 rounded-lg text-[9px] font-black uppercase ${isPickup ? 'bg-blue-600/20 text-blue-500' : 'bg-green-600/20 text-green-500'}`}>
-                                    {isPickup ? '📦 PICKUP' : '🚚 DELIVERY'}
-                                  </span>
-                                </div>
-                              </div>
-                              <select
-                                value={order.status}
-                                onChange={(e) => updateStatus(order.id, e.target.value)}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase border-none outline-none ${order.status === 'DONE' ? 'bg-green-600/20 text-green-500' : order.status === 'READY' ? 'bg-blue-600/20 text-blue-500' : order.status === 'PENDING' ? 'bg-orange-600/20 text-orange-500' : 'bg-zinc-800 text-zinc-400'}`}
-                              >
-                                <option value="PENDING">PENDING</option>
-                                <option value="PREPARING">PREPARING</option>
-                                <option value="READY">READY</option>
-                                <option value="DONE">DONE</option>
-                              </select>
-                            </div>
-                            <div className="bg-black/40 border border-zinc-900 p-4 rounded-xl mb-3">
-                              <p className="text-xs font-black uppercase tracking-widest text-zinc-600 mb-2 italic">Items Summary</p>
-                              <p className="text-xs font-medium leading-relaxed">{order.items}</p>
-                              <div className="mt-3 flex justify-between items-center border-t border-zinc-900/50 pt-3">
-                                <p className="text-xs font-black uppercase">Total Paid</p>
-                                <p className="text-lg font-black italic text-orange-500">₦{order.total_price?.toLocaleString()}</p>
-                              </div>
-                            </div>
-                            {showAddresses && !isPickup && (
-                              <div className="mt-3 space-y-2">
-                                <div className="flex items-start gap-2 p-3 bg-orange-500/5 border border-orange-500/10 rounded-xl">
-                                  <MapPin size={12} className="text-orange-500 shrink-0 mt-0.5" />
-                                  <div>
-                                    <p className="text-xs font-black text-orange-500 uppercase tracking-widest mb-1">Delivery</p>
-                                    <p className="text-xs font-bold italic leading-tight">{order.address}</p>
-                                    {order.payment_method && (
-                                      <p className="text-xs text-zinc-500 mt-1">Payment: {order.payment_method === 'cash' ? '💵 Cash' : '📱 Transfer'} on delivery</p>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </section>
-              </div>
-            </div>
-          )}
+      {/* ══ STATS BAR ══ */}
+      <div className="bg-[#242424] border-b border-zinc-800 px-6 py-4">
+        <div className="grid grid-cols-3 gap-4 max-w-4xl">
+          <div className="bg-[#1a1a1a] border border-zinc-800 p-3 rounded-lg text-center">
+            <p className="text-2xl font-black text-yellow-500">{pendingCount}</p>
+            <p className="text-[9px] font-black uppercase text-zinc-500 mt-1">Pending</p>
+          </div>
+          <div className="bg-[#1a1a1a] border border-zinc-800 p-3 rounded-lg text-center">
+            <p className="text-2xl font-black text-blue-500">{preparingCount}</p>
+            <p className="text-[9px] font-black uppercase text-zinc-500 mt-1">Preparing</p>
+          </div>
+          <div className="bg-[#1a1a1a] border border-zinc-800 p-3 rounded-lg text-center">
+            <p className="text-2xl font-black text-green-500">{readyCount}</p>
+            <p className="text-[9px] font-black uppercase text-zinc-500 mt-1">Ready</p>
+          </div>
         </div>
       </div>
 
-      {/* INVENTORY MODAL */}
-      {showInventory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
-          <div className="bg-zinc-950 border border-zinc-800 w-full max-w-5xl h-[85vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden">
-            <div className="flex-shrink-0 p-4 border-b border-zinc-800 bg-zinc-950">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-black uppercase text-white flex items-center gap-2"><PackagePlus size={16} /> Inventory Management</h2>
-                <button onClick={() => setShowInventory(false)} className="text-zinc-500 hover:text-white transition-colors"><X size={20} /></button>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input type="text" placeholder="SEARCH PRODUCTS..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="flex-1 bg-black border border-zinc-800 rounded-lg px-3 py-2 text-xs font-black uppercase outline-none focus:border-orange-500 transition-colors" />
-                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-black uppercase outline-none text-zinc-400">
-                  <option value="DEFAULT">SORT BY</option>
-                  <option value="PRICE_LOW">PRICE: LOW TO HIGH</option>
-                  <option value="PRICE_HIGH">PRICE: HIGH TO LOW</option>
-                  <option value="STOCK_LOW">STOCK: LOW TO HIGH</option>
-                  <option value="CATEGORY">CATEGORY</option>
+      {/* ══ MAIN LAYOUT ══ */}
+      <div className="flex">
+
+        {/* ─── LEFT/CENTER: Main Content Area ─── */}
+        <div className="flex-1 p-6 overflow-y-auto" style={{ height: 'calc(100vh - 220px)' }}>
+
+          {activeView === 'pos' && (
+            <>
+              {/* Search & Filters */}
+              <div className="mb-6 flex gap-4">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search products..."
+                    className="w-full bg-[#242424] border border-zinc-800 text-white pl-12 pr-4 py-3 rounded-xl focus:outline-none focus:border-[#ff8c00]"
+                  />
+                </div>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="bg-[#242424] border border-zinc-800 text-white px-4 py-3 rounded-xl focus:outline-none focus:border-[#ff8c00]"
+                >
+                  <option value="All">All Categories</option>
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.name}>{cat.name}</option>
+                  ))}
                 </select>
               </div>
-            </div>
 
-            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                {products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
-                  .sort((a, b) => {
-                    if (sortBy === 'PRICE_LOW') return a.price - b.price;
-                    if (sortBy === 'PRICE_HIGH') return b.price - a.price;
-                    if (sortBy === 'STOCK_LOW') return (a.stock || 0) - (b.stock || 0);
-                    if (sortBy === 'CATEGORY') return (a.category || '').localeCompare(b.category || '');
-                    return 0;
-                  })
-                  .map(p => {
-                    const stock = p.stock || 0;
-                    const isLowStock = stock > 0 && stock < 5;
-                    const isSoldOut = stock <= 0;
-                    return (
-                      <div key={p.id} className={`bg-black/40 p-2 rounded-lg border flex flex-col gap-1.5 group hover:border-orange-500/50 transition-all ${isSoldOut ? 'border-red-900/50' : isLowStock ? 'border-yellow-900/50' : 'border-zinc-900'}`}>
-                        <div className="relative group/img aspect-square overflow-hidden rounded-md">
-                          <img src={p.image || p.image_url || 'https://via.placeholder.com/400'} className="w-full h-full object-cover bg-zinc-900" onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400?text=Error'; }} />
-                          <div className={`absolute top-1 left-1 px-2 py-1 rounded-md text-[8px] font-black ${isSoldOut ? 'bg-red-600 text-white' : isLowStock ? 'bg-yellow-500 text-black' : 'bg-green-600 text-white'}`}>{stock} IN STOCK</div>
-                          <input type="file" accept="image/*" id={`replace-${p.id}`} className="hidden" onChange={(e) => handleReplaceImageUrl(p.id, e)} />
-                          <label htmlFor={`replace-${p.id}`} className="absolute inset-0 bg-black/80 opacity-0 group-hover/img:opacity-100 transition-all flex flex-col items-center justify-center cursor-pointer text-[8px] font-black"><Upload size={12} className="mb-1" /> UPDATE</label>
+              {/* Product Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {filteredProducts.map(product => {
+                  const stock = product.stock || 0;
+                  const isSoldOut = stock <= 0;
+                  const isLowStock = stock > 0 && stock < 5;
+
+                  return (
+                    <button
+                      key={product.id}
+                      onClick={() => !isSoldOut && addToCounter(product)}
+                      disabled={isSoldOut}
+                      className={`bg-[#242424] border rounded-xl p-4 text-left transition-all hover:border-[#ff8c00] active:scale-95 ${
+                        isSoldOut 
+                          ? 'opacity-40 cursor-not-allowed border-zinc-800' 
+                          : 'border-zinc-800 hover:shadow-lg hover:shadow-[#ff8c00]/20'
+                      }`}
+                    >
+                      {(product.image_url || product.image) ? (
+                        <img src={product.image_url || product.image} alt={product.name} className="w-full h-32 object-cover rounded-lg mb-3" />
+                      ) : (
+                        <div className="w-full h-32 bg-zinc-800 rounded-lg mb-3 flex items-center justify-center">
+                          <Package size={32} className="text-zinc-600" />
                         </div>
-                        <div className="min-w-0 px-0.5">
-                          <p className="text-[9px] font-black uppercase truncate leading-tight mb-0.5">{p.name}</p>
-                          <p className="text-[9px] text-orange-500 font-bold">₦{(p.price || 0).toLocaleString()}</p>
-                          <div className="flex gap-1.5 justify-between mt-1">
-                            <button onClick={() => openEditModal(p)} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-[8px] font-black uppercase transition-colors">EDIT</button>
-                            <button onClick={() => deleteProduct(p.id)} className="text-zinc-600 hover:text-red-500 transition-colors"><Trash2 size={10} /></button>
+                      )}
+                      <h3 className="font-bold text-white mb-1 truncate">{product.name}</h3>
+                      <p className="text-[#ff8c00] font-black text-lg">₦{(product.price || 0).toLocaleString()}</p>
+                      <p className={`text-xs mt-1 font-bold ${isSoldOut ? 'text-red-500' : isLowStock ? 'text-yellow-500' : 'text-zinc-500'}`}>
+                        {isSoldOut ? 'OUT OF STOCK' : `Stock: ${stock}`}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {filteredProducts.length === 0 && (
+                <div className="text-center py-20 text-zinc-600">
+                  <Package size={64} className="mx-auto mb-4 opacity-30" />
+                  <p className="font-bold uppercase tracking-wider">No products found</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeView === 'inventory' && (
+            <>
+              {/* ADD PRODUCT FORM */}
+              <div className="bg-[#242424] border border-zinc-800 rounded-xl overflow-hidden mb-6">
+                <div className="p-5 border-b border-zinc-800 bg-zinc-900/30">
+                  <h2 className="text-sm font-black uppercase flex items-center gap-2">
+                    <PackagePlus size={16} className="text-[#ff8c00]" /> Add New Product
+                  </h2>
+                </div>
+                <div className="p-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                    <div>
+                      <label className="text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 block">Product Name</label>
+                      <input placeholder="e.g. INDOMIE NOODLES" value={newName} onChange={e => setNewName(e.target.value)} className="w-full bg-[#1a1a1a] border border-zinc-800 rounded-xl px-4 py-3 text-xs font-black uppercase outline-none focus:border-[#ff8c00] transition-all" />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 block">Price (₦)</label>
+                      <input placeholder="e.g. 1500" type="number" value={newPrice} onChange={e => setNewPrice(e.target.value)} className="w-full bg-[#1a1a1a] border border-zinc-800 rounded-xl px-4 py-3 text-xs font-black uppercase outline-none focus:border-[#ff8c00] transition-all" />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 block">Stock Quantity</label>
+                      <input placeholder="e.g. 10" type="number" value={newStock} onChange={e => setNewStock(e.target.value)} className="w-full bg-[#1a1a1a] border border-zinc-800 rounded-xl px-4 py-3 text-xs font-black uppercase outline-none focus:border-[#ff8c00] transition-all" />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 block">Category</label>
+                      <select value={newCategory} onChange={e => setNewCategory(e.target.value)} className="w-full bg-[#1a1a1a] border border-zinc-800 rounded-xl px-4 py-3 text-xs font-black uppercase appearance-none outline-none focus:border-[#ff8c00] transition-all">
+                        <option value="">Select Category...</option>
+                        {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 block">Product Image</label>
+                      <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" id="product-image" />
+                      {newProduct.image_url ? (
+                        <div className="flex items-center gap-3 bg-[#1a1a1a] border border-green-500/30 rounded-xl p-3">
+                          <img src={newProduct.image_url} className="w-16 h-16 object-cover rounded-lg border border-zinc-800" alt="Preview" />
+                          <div className="flex-1"><p className="text-xs font-black text-green-500 uppercase mb-1">✓ Image Ready</p></div>
+                          <label htmlFor="product-image" className="bg-zinc-800 hover:bg-zinc-700 text-white px-3 py-2 rounded-lg text-[9px] font-black uppercase cursor-pointer transition-all">Replace</label>
+                        </div>
+                      ) : (
+                        <label htmlFor="product-image" className="w-full bg-[#1a1a1a] border border-dashed border-zinc-700 rounded-xl px-4 py-6 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-[#ff8c00] hover:bg-zinc-950 transition-all group">
+                          <Upload size={20} className="text-zinc-600 group-hover:text-[#ff8c00] transition-colors" />
+                          <p className="text-xs font-black uppercase text-zinc-500 group-hover:text-[#ff8c00] transition-colors">Upload Product Image</p>
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                  <button onClick={handleAddProduct} className="w-full bg-[#ff8c00] hover:bg-[#ff9f1a] py-4 rounded-xl text-xs font-black uppercase tracking-widest transition-all active:scale-95">+ Add Product to Inventory</button>
+                </div>
+              </div>
+
+              {/* PRODUCTS GRID */}
+              <div className="bg-[#242424] border border-zinc-800 rounded-xl overflow-hidden">
+                <div className="p-4 border-b border-zinc-800 bg-zinc-900/20 flex flex-col sm:flex-row gap-2">
+                  <input type="text" placeholder="SEARCH PRODUCTS..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="flex-1 bg-[#1a1a1a] border border-zinc-800 rounded-lg px-4 py-2.5 text-xs font-black uppercase outline-none focus:border-[#ff8c00] transition-all" />
+                  <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs font-black uppercase outline-none text-zinc-400">
+                    <option value="DEFAULT">SORT BY</option>
+                    <option value="PRICE_LOW">PRICE: LOW → HIGH</option>
+                    <option value="PRICE_HIGH">PRICE: HIGH → LOW</option>
+                    <option value="STOCK_LOW">STOCK: LOW → HIGH</option>
+                    <option value="CATEGORY">CATEGORY A-Z</option>
+                  </select>
+                </div>
+                <div className="p-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-[550px] overflow-y-auto">
+                    {inventoryFilteredProducts.map(p => {
+                      const stock = p.stock || 0;
+                      const isLowStock = stock > 0 && stock < 5;
+                      const isSoldOut = stock <= 0;
+                      return (
+                        <div key={p.id} className={`bg-[#1a1a1a] p-2 rounded-xl border flex flex-col gap-1.5 group hover:border-[#ff8c00]/50 transition-all ${isSoldOut ? 'border-red-900/50 opacity-70' : isLowStock ? 'border-yellow-900/50' : 'border-zinc-900'}`}>
+                          <div className="relative aspect-square overflow-hidden rounded-lg group/img">
+                            <img src={p.image || p.image_url || 'https://via.placeholder.com/400'} className="w-full h-full object-cover bg-zinc-900" alt={p.name} onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400?text=No+Image'; }} />
+                            <div className={`absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md text-[7px] font-black ${isSoldOut ? 'bg-red-600 text-white' : isLowStock ? 'bg-yellow-500 text-black' : 'bg-green-600 text-white'}`}>{isSoldOut ? 'SOLD OUT' : `${stock} LEFT`}</div>
+                            <input type="file" accept="image/*" id={`replace-${p.id}`} className="hidden" onChange={(e) => handleReplaceProductImage(p.id, e)} />
+                            <label htmlFor={`replace-${p.id}`} className="absolute inset-0 bg-black/80 opacity-0 group-hover/img:opacity-100 transition-all flex flex-col items-center justify-center cursor-pointer text-[8px] font-black gap-1"><Upload size={12} /> UPDATE IMG</label>
+                          </div>
+                          <div className="px-0.5">
+                            <p className="text-[9px] font-black uppercase truncate leading-tight">{p.name}</p>
+                            <p className="text-[9px] text-[#ff8c00] font-bold">₦{(p.price || 0).toLocaleString()}</p>
+                            <p className="text-[8px] text-zinc-600 uppercase font-bold">{p.category}</p>
+                          </div>
+                          <div className="flex gap-1">
+                            <button onClick={() => openEditModal(p)} className="flex-1 flex items-center justify-center gap-1 py-1 bg-zinc-900 hover:bg-blue-600 text-zinc-600 hover:text-white rounded-lg text-[8px] font-black uppercase transition-all active:scale-95">
+                              <Edit3 size={9} /> Edit
+                            </button>
+                            <button onClick={() => markOutOfStock(p.id)} className="flex-1 flex items-center justify-center gap-1 py-1 bg-zinc-900 hover:bg-yellow-600 text-zinc-600 hover:text-white rounded-lg text-[8px] font-black uppercase transition-all active:scale-95">
+                              <AlertTriangle size={9} /> 0
+                            </button>
+                            <button onClick={() => deleteProduct(p.id)} className="flex-1 flex items-center justify-center gap-1 py-1 bg-zinc-900 hover:bg-red-600 text-zinc-600 hover:text-white rounded-lg text-[8px] font-black uppercase transition-all active:scale-95">
+                              <Trash2 size={9} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {inventoryFilteredProducts.length === 0 && (
+                      <div className="col-span-full text-center py-16">
+                        <PackagePlus size={32} className="text-zinc-800 mx-auto mb-3" />
+                        <p className="text-zinc-600 text-xs font-black uppercase">No products found</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeView === 'categories' && (
+            <>
+              <div className="bg-[#242424] border border-zinc-800 p-6 rounded-xl mb-6">
+                <h2 className="text-sm font-black uppercase mb-4 flex items-center gap-2"><PlusCircle size={16} className="text-[#ff8c00]" /> Add New Category</h2>
+                <div className="flex gap-3">
+                  <input value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="CATEGORY NAME..." className="flex-1 bg-[#1a1a1a] border border-zinc-800 rounded-xl px-4 py-3 text-sm font-black uppercase outline-none focus:border-[#ff8c00] transition-all" />
+                  <button onClick={handleAddCategory} className="bg-[#ff8c00] hover:bg-[#ff9f1a] px-8 py-3 rounded-xl flex items-center gap-2 font-black uppercase text-sm transition-all active:scale-95"><Save size={16} /> Add</button>
+                </div>
+              </div>
+              <div className="bg-[#242424] border border-zinc-800 p-6 rounded-xl">
+                <h3 className="text-xs font-black uppercase text-zinc-500 mb-4">All Categories ({categories.length})</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {categories.map(c => (
+                    <div key={c.id} className="flex justify-between items-center bg-[#1a1a1a] border border-zinc-900 px-4 py-3 rounded-xl group hover:border-[#ff8c00]/50 transition-all">
+                      <div>
+                        <span className="text-sm font-black uppercase">{c.name}</span>
+                        <p className="text-[9px] text-zinc-600 font-bold">{products.filter(p => p.category === c.name).length} products</p>
+                      </div>
+                      <button onClick={() => deleteCategory(c.id)} className="text-zinc-600 hover:text-red-500 transition-colors p-2"><Trash2 size={14} /></button>
+                    </div>
+                  ))}
+                  {categories.length === 0 && <div className="col-span-full text-center py-10 text-zinc-600"><p className="text-xs font-black uppercase">No categories yet</p></div>}
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeView === 'orders' && (
+            <>
+              <div className="bg-[#242424] border border-zinc-800 rounded-xl p-4 mb-6">
+                <p className="text-[9px] font-black text-zinc-600 uppercase tracking-wider mb-3">Filter by Status</p>
+                <div className="flex flex-wrap gap-2">
+                  {['ALL', 'PENDING', 'PREPARING', 'READY', 'DONE'].map((status) => (
+                    <button key={status} onClick={() => setOrderFilter(status)} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all active:scale-95 ${orderFilter === status ? status === 'ALL' ? 'bg-white text-black' : status === 'PENDING' ? 'bg-orange-500 text-black' : status === 'PREPARING' ? 'bg-yellow-500 text-black' : status === 'READY' ? 'bg-blue-500 text-white' : 'bg-green-500 text-black' : 'bg-zinc-900/50 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400'}`}>
+                      {status} {status !== 'ALL' && `(${pickupOrders.filter(o => o.status === status).length})`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-[#242424] border border-zinc-800 rounded-xl overflow-hidden">
+                <div className="p-5 border-b border-zinc-800 bg-zinc-900/20 flex items-center gap-2">
+                  <ShoppingBag size={14} className="text-[#ff8c00]" />
+                  <h2 className="text-xs font-black uppercase tracking-widest">📦 Pickup Orders Only</h2>
+                  <span className="ml-auto text-[9px] font-black text-zinc-600 bg-zinc-900 px-2 py-1 rounded-lg uppercase">{filteredPickupOrders.length} Order{filteredPickupOrders.length !== 1 ? 's' : ''}</span>
+                </div>
+
+                <div className="divide-y divide-zinc-900 max-h-[600px] overflow-y-auto">
+                  {filteredPickupOrders.length === 0 ? (
+                    <div className="p-16 text-center">
+                      <ShoppingBag size={36} className="text-zinc-800 mx-auto mb-3" />
+                      <p className="text-xs font-black uppercase text-zinc-600">No pickup orders found</p>
+                    </div>
+                  ) : (
+                    filteredPickupOrders.map(order => {
+                      const isExpanded = expandedOrderId === order.id;
+                      return (
+                        <div key={order.id} className="hover:bg-white/[0.02] transition-colors">
+                          <div className="p-4 flex items-center gap-3 cursor-pointer select-none" onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}>
+                            <div className="bg-black border border-zinc-800 px-2.5 py-1.5 rounded-lg flex-shrink-0">
+                              <p className="text-xs font-black"># {order.id}</p>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-black uppercase truncate">{order.customer_name}</p>
+                              <p className="text-xs font-bold text-orange-400 mt-0.5 flex items-center gap-1">
+                                <Clock size={9} className="text-orange-500" />
+                                {formatOrderDateTime(order.created_at)}
+                              </p>
+                              {order.phone_number && <span className="text-xs text-green-500 font-bold">📞 {order.phone_number}</span>}
+                            </div>
+                            <select value={order.status} onClick={e => e.stopPropagation()} onChange={(e) => updateOrderStatus(order.id, e.target.value as OrderStatus)} className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase border-none outline-none flex-shrink-0 ${order.status === 'DONE' ? 'bg-green-600/20 text-green-500' : order.status === 'READY' ? 'bg-blue-600/20 text-blue-500' : order.status === 'PREPARING' ? 'bg-yellow-600/20 text-yellow-500' : 'bg-orange-600/20 text-orange-500'}`}>
+                              <option value="PENDING">PENDING</option>
+                              <option value="PREPARING">PREPARING</option>
+                              <option value="READY">READY</option>
+                              <option value="DONE">DONE</option>
+                            </select>
+                            <p className="text-base font-black text-orange-500 flex-shrink-0">₦{(order.total_price || order.total_price || 0).toLocaleString()}</p>
+                            <div className="text-zinc-600 flex-shrink-0">{isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</div>
+                          </div>
+
+                          {isExpanded && (
+                            <div className="px-4 pb-4 animate-in slide-in-from-top-2 fade-in duration-200">
+                              <div className="bg-[#1a1a1a] border border-zinc-900 p-4 rounded-xl">
+                                <p className="text-[9px] font-black uppercase text-zinc-600 mb-3 tracking-wider">Items Ordered</p>
+                                <div className="space-y-1.5 mb-4">
+                                  {order.items?.split(', ').map((item: string, idx: number) => (
+                                    <div key={idx} className="flex items-center gap-2 text-xs">
+                                      <div className="w-1.5 h-1.5 bg-[#ff8c00] rounded-full flex-shrink-0" />
+                                      <span className="font-medium">{item}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="flex justify-between items-center pt-3 border-t border-zinc-900">
+                                  <span className="text-xs font-black uppercase text-zinc-500">Total Paid</span>
+                                  <span className="text-lg font-black text-orange-500">₦{(order.total_price || order.total_price || 0).toLocaleString()}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeView === 'payments' && (
+            <>
+              {/* CASH IN FIELD METRIC */}
+              <div className="bg-gradient-to-br from-orange-500/10 to-red-500/10 border-2 border-orange-500/30 p-6 rounded-xl mb-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase text-orange-400 mb-2">💵 Cash in Field</p>
+                    <p className="text-4xl font-black text-orange-500">₦{cashInField.toLocaleString()}</p>
+                    <p className="text-xs text-zinc-400 mt-2">
+                      {deliveredUnpaidOrders.length} order{deliveredUnpaidOrders.length !== 1 ? 's' : ''} awaiting collection
+                    </p>
+                  </div>
+                  <div className="bg-orange-500/20 p-4 rounded-xl">
+                    <DollarSign size={48} className="text-orange-500" />
+                  </div>
+                </div>
+              </div>
+
+              {/* UNPAID ORDERS LIST */}
+              <div className="bg-[#242424] border border-zinc-800 rounded-xl overflow-hidden">
+                <div className="p-5 border-b border-zinc-800 bg-zinc-900/20">
+                  <h2 className="text-sm font-black uppercase flex items-center gap-2">
+                    <AlertTriangle size={16} className="text-orange-500" />
+                    Awaiting Payment Confirmation
+                  </h2>
+                </div>
+
+                {deliveredUnpaidOrders.length === 0 ? (
+                  <div className="p-16 text-center">
+                    <CheckCircle size={48} className="text-green-500 mx-auto mb-3" />
+                    <p className="text-sm font-black uppercase text-zinc-600">All Payments Collected!</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-zinc-800">
+                    {deliveredUnpaidOrders.map(order => (
+                      <div key={order.id} className="p-5 hover:bg-white/[0.02] transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="text-lg font-black text-orange-500">Order #{order.id}</span>
+                              <span className="px-2 py-1 bg-orange-500/20 text-orange-400 text-[10px] font-black uppercase rounded">Unpaid</span>
+                            </div>
+                            <p className="text-sm font-bold text-white mb-1">{order.customer_name}</p>
+                            <p className="text-xs text-zinc-500">{order.phone_number}</p>
+                            <p className="text-xs text-zinc-600 mt-1">{formatOrderDateTime(order.created_at)}</p>
+                          </div>
+
+                          <div className="text-right">
+                            <p className="text-2xl font-black text-orange-500 mb-3">₦{(order.total_price || 0).toLocaleString()}</p>
+                            <button
+                              onClick={() => confirmPaymentReceived(order.id)}
+                              className="px-6 py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl font-black uppercase text-xs tracking-wider transition-all active:scale-95"
+                            >
+                              <CheckCircle size={14} className="inline mr-2" />
+                              Confirm Payment
+                            </button>
                           </div>
                         </div>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
+                )}
               </div>
+            </>
+          )}
+        </div>
+
+        {/* ─── RIGHT SIDEBAR: Counter Cart + Online Orders ─── */}
+        <div className="w-96 bg-[#242424] border-l border-zinc-800 overflow-y-auto sticky top-[220px]" style={{ height: 'calc(100vh - 220px)' }}>
+
+          {activeView === 'pos' && (
+            <>
+              {/* Counter Cart */}
+              <div className="p-4 border-b border-zinc-800">
+                <h2 className="text-lg font-black uppercase mb-4 flex items-center gap-2">
+                  <ShoppingCart size={18} />
+                  Counter Sale
+                </h2>
+
+                <div className="space-y-2 mb-4">
+                  <input
+                    type="text"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="Customer Name *"
+                    className="w-full bg-[#1a1a1a] border border-zinc-700 text-white px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-[#ff8c00]"
+                  />
+                  <input
+                    type="tel"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    placeholder="Phone (Optional)"
+                    className="w-full bg-[#1a1a1a] border border-zinc-700 text-white px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-[#ff8c00]"
+                  />
+                </div>
+
+                {counterCart.length === 0 ? (
+                  <div className="text-center py-8 text-zinc-600">
+                    <ShoppingCart size={32} className="mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">Cart is empty</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2 mb-4 max-h-60 overflow-y-auto">
+                      {counterCart.map(item => (
+                        <div key={item.productId} className="bg-[#1a1a1a] border border-zinc-800 rounded-lg p-3">
+                          <div className="flex items-start justify-between mb-2">
+                            <p className="font-bold text-sm flex-1">{item.name}</p>
+                            <button
+                              onClick={() => removeFromCounter(item.productId)}
+                              className="text-red-500 hover:text-red-400"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => updateCounterQuantity(item.productId, -1)}
+                                className="w-7 h-7 bg-zinc-700 hover:bg-zinc-600 rounded flex items-center justify-center"
+                              >
+                                <Minus size={14} />
+                              </button>
+                              <span className="font-bold w-8 text-center">{item.quantity}</span>
+                              <button
+                                onClick={() => updateCounterQuantity(item.productId, 1)}
+                                className="w-7 h-7 bg-zinc-700 hover:bg-zinc-600 rounded flex items-center justify-center"
+                              >
+                                <Plus size={14} />
+                              </button>
+                            </div>
+                            <p className="text-[#ff8c00] font-black">₦{(item.price * item.quantity).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="bg-[#1a1a1a] border border-zinc-800 rounded-lg p-4 mb-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xl font-black uppercase">Total</span>
+                        <span className="text-2xl font-black text-[#ff8c00]">₦{counterTotal.toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={processCounterSale}
+                      disabled={processingCheckout || !customerName.trim()}
+                      className="w-full bg-[#ff8c00] hover:bg-[#ff9f1a] text-black font-black py-4 rounded-xl uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {processingCheckout ? 'Processing...' : 'Complete Sale'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Online Orders Feed */}
+          <div className={`p-4 ${newOrderGlow ? 'animate-pulse bg-[#ff8c00]/10' : ''}`}>
+            <h2 className="text-lg font-black uppercase mb-4 flex items-center gap-2">
+              <Package size={18} className={newOrderGlow ? 'text-[#ff8c00]' : ''} />
+              Online Orders
+              {newOrderGlow && <span className="text-xs bg-[#ff8c00] text-black px-2 py-1 rounded-full font-black">NEW!</span>}
+            </h2>
+
+            {onlineOrders.length === 0 ? (
+              <div className="text-center py-8 text-zinc-600">
+                <Package size={32} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No orders yet</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {onlineOrders.map(order => (
+                  <div key={order.id} className="bg-[#1a1a1a] border border-zinc-800 rounded-lg p-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="font-black text-[#ff8c00] text-lg">#{order.id}</p>
+                        <p className="text-xs text-zinc-500">{formatOrderDateTime(order.created_at)}</p>
+                      </div>
+                      <div className={`px-3 py-1 rounded-full text-xs font-black ${
+                        order.status === 'PENDING' ? 'bg-yellow-500/20 text-yellow-400' :
+                        order.status === 'PREPARING' ? 'bg-blue-500/20 text-blue-400' :
+                        order.status === 'READY' ? 'bg-green-500/20 text-green-400' :
+                        'bg-purple-500/20 text-purple-400'
+                      }`}>
+                        {order.status}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 mb-3 text-sm">
+                      <div className="flex items-center gap-2">
+                        <User size={14} className="text-zinc-600" />
+                        <span className="font-bold">{order.customer_name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Phone size={14} className="text-zinc-600" />
+                        <span>{order.phone_number}</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <MapPin size={14} className="text-zinc-600 mt-0.5" />
+                        <span className="text-xs text-zinc-400">{order.address || 'N/A'}</span>
+                      </div>
+                      <div className="pt-2 border-t border-zinc-800">
+                        <p className="text-zinc-500 text-xs mb-1">Items:</p>
+                        <p className="text-sm">{order.items}</p>
+                      </div>
+                      <div className="flex justify-between items-center pt-2 border-t border-zinc-800">
+                        <span className="text-zinc-500 text-xs uppercase font-bold">Total</span>
+                        <span className="text-[#ff8c00] font-black text-lg">₦{(order.total_price || 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    {order.status === 'PENDING' && (
+                      <button
+                        onClick={() => updateOrderStatus(order.id, 'PREPARING')}
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg uppercase text-xs tracking-wider transition-colors"
+                      >
+                        <Clock size={14} className="inline mr-2" />
+                        Start Packing
+                      </button>
+                    )}
+                    {order.status === 'PREPARING' && (
+                      <button
+                        onClick={() => updateOrderStatus(order.id, 'READY')}
+                        className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-2 rounded-lg uppercase text-xs tracking-wider transition-colors"
+                      >
+                        <CheckCircle size={14} className="inline mr-2" />
+                        Mark Ready
+                      </button>
+                    )}
+                    {order.status === 'READY' && (
+                      <div className="bg-green-500/10 border border-green-500/30 text-green-400 px-3 py-2 rounded-lg text-center">
+                        <Truck size={16} className="inline mr-2" />
+                        <span className="text-xs font-bold uppercase">Waiting for Driver</span>
+                      </div>
+                    )}
+                    {order.status === 'OUT_FOR_DELIVERY' && (
+                      <div className="bg-purple-500/10 border border-purple-500/30 text-purple-400 px-3 py-2 rounded-lg text-center">
+                        <Truck size={16} className="inline mr-2" />
+                        <span className="text-xs font-bold uppercase">Out for Delivery</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ══ EDIT PRODUCT MODAL ══ */}
+      {editingProduct && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#242424] border border-zinc-800 rounded-2xl p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-black uppercase">Edit Product</h2>
+              <button onClick={closeEditModal} className="text-zinc-500 hover:text-white">
+                <X size={24} />
+              </button>
             </div>
 
-            <div className="flex-shrink-0 p-4 border-t border-zinc-800 bg-zinc-950">
-              <p className="text-[9px] font-black text-zinc-600 uppercase mb-2 italic text-center">Add New Item</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input placeholder="NAME" value={newName} onChange={e => setNewName(e.target.value)} className="bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:border-orange-500" />
-                <input placeholder="PRICE" type="number" value={newPrice} onChange={e => setNewPrice(e.target.value)} className="bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:border-orange-500" />
-                <input placeholder="STOCK" type="number" value={newStock} onChange={e => setNewStock(e.target.value)} className="bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:border-orange-500" />
-                <select value={newCategory} onChange={e => setNewCategory(e.target.value)} className="bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase">
-                  <option value="">CATEGORY</option>
-                  {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                </select>
-                <div className="relative sm:col-span-2">
-                  <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" id="new-product-modal" />
-                  <label htmlFor="new-product-modal" className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase flex items-center justify-center gap-2 cursor-pointer hover:bg-zinc-800">
-                    <Upload size={10} /> {newProduct.image_url ? 'UPLOADED ✓' : 'UPLOAD IMAGE'}
-                  </label>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-zinc-400 text-xs font-bold mb-2 uppercase">Product Name</label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  className="w-full bg-[#1a1a1a] border border-zinc-700 text-white px-4 py-3 rounded-lg focus:outline-none focus:border-[#ff8c00]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-zinc-400 text-xs font-bold mb-2 uppercase">Price (₦)</label>
+                  <input
+                    type="number"
+                    value={editForm.price}
+                    onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                    className="w-full bg-[#1a1a1a] border border-zinc-700 text-white px-4 py-3 rounded-lg focus:outline-none focus:border-[#ff8c00]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-400 text-xs font-bold mb-2 uppercase">Stock</label>
+                  <input
+                    type="number"
+                    value={editForm.stock}
+                    onChange={(e) => setEditForm({ ...editForm, stock: e.target.value })}
+                    className="w-full bg-[#1a1a1a] border border-zinc-700 text-white px-4 py-3 rounded-lg focus:outline-none focus:border-[#ff8c00]"
+                  />
                 </div>
               </div>
-              <button onClick={handleAddProduct} className="w-full bg-orange-600 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-orange-500 transition-colors mt-2">Add to Inventory</button>
+
+              <div>
+                <label className="block text-zinc-400 text-xs font-bold mb-2 uppercase">Category</label>
+                <select
+                  value={editForm.category}
+                  onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                  className="w-full bg-[#1a1a1a] border border-zinc-700 text-white px-4 py-3 rounded-lg focus:outline-none focus:border-[#ff8c00]"
+                >
+                  <option value="">Select category</option>
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.name}>{cat.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-zinc-400 text-xs font-bold mb-2 uppercase">Image URL</label>
+                <input
+                  type="text"
+                  value={editForm.image_url}
+                  onChange={(e) => setEditForm({ ...editForm, image_url: e.target.value })}
+                  className="w-full bg-[#1a1a1a] border border-zinc-700 text-white px-4 py-3 rounded-lg focus:outline-none focus:border-[#ff8c00]"
+                  placeholder="https://..."
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={saveProductEdit}
+                  className="flex-1 bg-[#ff8c00] hover:bg-[#ff9f1a] text-black font-bold py-3 rounded-lg uppercase tracking-wider transition-colors"
+                >
+                  <Save size={16} className="inline mr-2" />
+                  Save Changes
+                </button>
+                <button
+                  onClick={closeEditModal}
+                  className="px-6 bg-zinc-700 hover:bg-zinc-600 text-white font-bold py-3 rounded-lg uppercase tracking-wider transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
-
-      {/* EDIT PRODUCT MODAL */}
-      {showEditModal && editingProduct && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/95 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-zinc-950 border border-zinc-800 w-full max-w-md max-h-[90vh] sm:max-h-[85vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300">
-            <div className="flex-shrink-0 p-4 sm:p-6 border-b border-zinc-800 bg-zinc-900/50">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs sm:text-sm font-black uppercase text-white flex items-center gap-2"><Edit3 size={14} className="text-orange-500" /> Edit Product</h3>
-                <button onClick={() => { setShowEditModal(false); setEditingProduct(null); }} className="text-zinc-500 hover:text-white transition-colors p-1"><X size={18} /></button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4 custom-scrollbar">
-              <div>
-                <label className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 sm:mb-2 block">Product Name</label>
-                <input type="text" value={editingProduct.name} onChange={(e) => handleEditChange('name', e.target.value)} className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 sm:py-2.5 text-xs font-black uppercase outline-none focus:border-orange-500 transition-all" placeholder="PRODUCT NAME" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 sm:mb-2 block">Price (₦)</label>
-                  <input type="number" value={editingProduct.price} onChange={(e) => handleEditChange('price', e.target.value)} className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 sm:py-2.5 text-xs font-black uppercase outline-none focus:border-orange-500 transition-all" />
-                </div>
-                <div>
-                  <label className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 sm:mb-2 block">Stock Qty</label>
-                  <input type="number" value={editingProduct.stock} onChange={(e) => handleEditChange('stock', e.target.value)} className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 sm:py-2.5 text-xs font-black uppercase outline-none focus:border-orange-500 transition-all" />
-                </div>
-              </div>
-              <div>
-                <label className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 sm:mb-2 block">Category</label>
-                <select value={editingProduct.category} onChange={(e) => handleEditChange('category', e.target.value)} className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 sm:py-2.5 text-xs font-black uppercase outline-none focus:border-orange-500 transition-all appearance-none cursor-pointer">
-                  <option value="">SELECT CATEGORY</option>
-                  {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                </select>
-              </div>
-              {editingProduct.image_url && (
-                <div>
-                  <label className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 sm:mb-2 block">Current Image</label>
-                  <img src={editingProduct.image_url} alt="Product" className="w-full h-40 sm:h-48 object-cover rounded-lg border border-zinc-800" onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400?text=No+Image'; }} />
-                </div>
-              )}
-              <div className="bg-orange-500/5 border border-orange-500/20 rounded-lg p-3">
-                <p className="text-[9px] sm:text-[10px] text-orange-500/80 font-bold uppercase tracking-wider text-center">💡 Changes will be saved to database</p>
-              </div>
-            </div>
-            <div className="flex-shrink-0 p-4 sm:p-6 border-t border-zinc-800 bg-zinc-900/50 flex flex-col sm:flex-row gap-2 sm:gap-3">
-              <button onClick={() => { setShowEditModal(false); setEditingProduct(null); }} className="flex-1 bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-white py-2.5 sm:py-3 rounded-lg text-xs font-black uppercase transition-all">Cancel</button>
-              <button onClick={handleSaveEdit} className="flex-1 bg-orange-600 hover:bg-orange-500 active:scale-95 text-white py-2.5 sm:py-3 rounded-lg text-xs font-black uppercase transition-all shadow-lg shadow-orange-500/20">💾 Save Changes</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   );
 }

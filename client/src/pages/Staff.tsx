@@ -99,7 +99,7 @@ export default function StaffOS() {
       const [productsRes, categoriesRes, onlineOrdersRes, pickupOrdersRes] = await Promise.all([
         supabase.from('products').select('*').order('name'),
         supabase.from('categories').select('*').order('name'),
-        supabase.from('orders').select('*').not('address', 'is', null).neq('status', 'DONE').order('created_at', { ascending: false }),
+        supabase.from('orders').select('*').not('address', 'is', null).order('created_at', { ascending: false }),
         supabase.from('orders').select('*').is('address', null).order('created_at', { ascending: false })
       ]);
 
@@ -294,7 +294,14 @@ export default function StaffOS() {
     try {
       const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
       if (error) throw error;
-      fetchData();
+
+      // Update local state immediately (no reload needed)
+      setOnlineOrders(prev => prev.map(o => 
+        o.id === orderId ? { ...o, status: newStatus } : o
+      ));
+      setPickupOrders(prev => prev.map(o => 
+        o.id === orderId ? { ...o, status: newStatus } : o
+      ));
     } catch (err: any) {
       alert('Failed to update status: ' + err.message);
     }
@@ -427,8 +434,13 @@ export default function StaffOS() {
     try {
       const { error } = await supabase.from('orders').update({ payment_status: 'paid' }).eq('id', orderId);
       if (error) throw error;
+
+      // Update local state immediately (no reload needed)
+      setOnlineOrders(prev => prev.map(o => 
+        o.id === orderId ? { ...o, payment_status: 'paid' } : o
+      ));
+
       alert('✅ Payment confirmed!');
-      fetchData();
     } catch (err: any) {
       alert('Failed: ' + err.message);
     }

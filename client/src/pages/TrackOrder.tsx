@@ -87,10 +87,12 @@ export default function TrackOrder() {
 
       if (error) throw error;
 
+      // Update local state immediately (no reload needed)
+      if (typeof res === 'object' && res !== null) {
+        setRes({ ...res, status: 'COMPLETED' });
+      }
+
       alert('✅ Thank you for confirming! Order marked as completed.');
-      // Refresh the order
-      const { data } = await supabase.from('orders').select('*').eq('id', orderId).single();
-      if (data) setRes(data);
     } catch (err: any) {
       alert('Failed to confirm: ' + err.message);
     }

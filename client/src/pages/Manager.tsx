@@ -70,7 +70,7 @@ export default function Manager() {
   const [isSavingFee, setIsSavingFee] = useState(false);
 
   const [instagramUrl, setInstagramUrl] = useState('');
-  const [whatsappUrl, setWhatsAppUrl] = useState('');
+  const [whatsappUrl, setWhatsappUrl] = useState('');
   const [twitterUrl, setTwitterUrl] = useState('');
   const [isSavingSocials, setIsSavingSocials] = useState(false);
 
@@ -138,7 +138,7 @@ export default function Manager() {
       if (sData) {
         setDeliveryFeePerKm(String(sData.delivery_fee_per_km || 150));
         setInstagramUrl(sData.instagram_url || '');
-        setWhatsAppUrl(sData.whatsapp_url || '');
+        setWhatsappUrl(sData.whatsapp_url || '');
         setTwitterUrl(sData.twitter_url || '');
       }
 
@@ -475,7 +475,7 @@ export default function Manager() {
                   <h3 className="text-xs font-black uppercase text-orange-500 mb-4">Social Media Links</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <input type="url" value={instagramUrl} onChange={(e) => setInstagramUrl(e.target.value)} placeholder="Instagram URL" className="bg-black border border-zinc-800 rounded-xl p-3 text-sm" />
-                    <input type="url" value={whatsappUrl} onChange={(e) => setWhatsAppUrl(e.target.value)} placeholder="WhatsApp URL" className="bg-black border border-zinc-800 rounded-xl p-3 text-sm" />
+                    <input type="url" value={whatsappUrl} onChange={(e) => setWhatsappUrl(e.target.value)} placeholder="WhatsApp URL" className="bg-black border border-zinc-800 rounded-xl p-3 text-sm" />
                     <input type="url" value={twitterUrl} onChange={(e) => setTwitterUrl(e.target.value)} placeholder="Twitter URL" className="bg-black border border-zinc-800 rounded-xl p-3 text-sm" />
                   </div>
                   <button onClick={handleSaveSocials} disabled={isSavingSocials} className="w-full mt-4 bg-orange-600 py-3 rounded-xl font-black uppercase text-xs">Save Social Links</button>

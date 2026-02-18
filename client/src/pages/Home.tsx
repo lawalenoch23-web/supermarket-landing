@@ -199,6 +199,7 @@ export default function Home() {
       items: orderItems,
       address: showAddresses ? address : null,
       status: "PENDING",
+      payment_status: showAddresses ? 'unpaid' : 'paid',  // Cash on delivery = unpaid, Pickup = paid
       store_name: storeSettings?.store_name || storeName,
       payment_method: showAddresses ? paymentMethod : 'pickup',
       discount_code: appliedDiscount ? appliedDiscount.code_name : null,

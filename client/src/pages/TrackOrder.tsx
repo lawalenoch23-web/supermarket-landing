@@ -211,7 +211,47 @@ export default function TrackOrder() {
                       </div>
                     );
                   })}
+
+              {/* CONFIRM RECEIPT BUTTON (for delivered orders) */}
+              {res.status === 'DONE' && (
+                <div className="mt-6 bg-gradient-to-r from-green-500/10 to-emerald-500/10 border-2 border-green-500/30 p-6 rounded-2xl">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+                      <svg className="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-black text-green-400 text-sm uppercase">Order Delivered!</p>
+                      <p className="text-xs text-zinc-400 mt-1">Please confirm that you've received your order</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => confirmReceipt(res.id)}
+                    className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-3"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Confirm Receipt
+                  </button>
                 </div>
+              )}
+
+              {/* COMPLETED MESSAGE */}
+              {res.status === 'COMPLETED' && (
+                <div className="mt-6 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-2 border-blue-500/30 p-6 rounded-2xl text-center">
+                  <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <p className="font-black text-blue-400 text-lg uppercase mb-2">✓ Order Completed</p>
+                  <p className="text-xs text-zinc-400">Thank you for your confirmation!</p>
+                </div>
+              )}
+
+              </div>
               </div>
 
               {/* ORDER DETAILS */}

@@ -64,7 +64,7 @@ export default function StaffOS() {
   const [sortBy, setSortBy] = useState('DEFAULT');
 
   // ─── UI STATE ───
-  const [activeView, setActiveView] = useState<'pos' | 'inventory' | 'categories' | 'orders'>('pos');
+  const [activeView, setActiveView] = useState<'pos' | 'inventory' | 'categories' | 'orders' | 'payments'>('pos');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [newOrderGlow, setNewOrderGlow] = useState(false);
@@ -256,8 +256,9 @@ export default function StaffOS() {
         phone_number: customerPhone || 'N/A',
         address: null, // null = pickup order
         items: itemsString,
-        grand_total: counterTotal,
+        total_price: counterTotal,
         status: 'READY',
+        payment_status: 'paid',  // Counter sales are paid immediately
         payment_method: 'cash',
         created_at: new Date().toISOString()
       };
@@ -413,6 +414,26 @@ export default function StaffOS() {
   };
 
   // ─── FILTERS ───
+
+  // ─── PAYMENT TRACKING ───
+  const deliveredUnpaidOrders = onlineOrders.filter(o => 
+    o.status === 'DONE' && 
+    o.payment_status === 'unpaid'
+  );
+  const cashInField = deliveredUnpaidOrders.reduce((sum, order) => sum + (order.total_price || 0), 0);
+
+  const confirmPaymentReceived = async (orderId: number) => {
+    if (!confirm('Confirm payment received from driver?')) return;
+    try {
+      const { error } = await supabase.from('orders').update({ payment_status: 'paid' }).eq('id', orderId);
+      if (error) throw error;
+      alert('✅ Payment confirmed!');
+      fetchData();
+    } catch (err: any) {
+      alert('Failed: ' + err.message);
+    }
+  };
+
   const filteredProducts = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || p.category === selectedCategory;
@@ -845,7 +866,7 @@ export default function StaffOS() {
                               <option value="READY">READY</option>
                               <option value="DONE">DONE</option>
                             </select>
-                            <p className="text-base font-black text-orange-500 flex-shrink-0">₦{(order.grand_total || order.total_price || 0).toLocaleString()}</p>
+                            <p className="text-base font-black text-orange-500 flex-shrink-0">₦{(order.total_price || order.total_price || 0).toLocaleString()}</p>
                             <div className="text-zinc-600 flex-shrink-0">{isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</div>
                           </div>
 
@@ -863,7 +884,7 @@ export default function StaffOS() {
                                 </div>
                                 <div className="flex justify-between items-center pt-3 border-t border-zinc-900">
                                   <span className="text-xs font-black uppercase text-zinc-500">Total Paid</span>
-                                  <span className="text-lg font-black text-orange-500">₦{(order.grand_total || order.total_price || 0).toLocaleString()}</span>
+                                  <span className="text-lg font-black text-orange-500">₦{(order.total_price || order.total_price || 0).toLocaleString()}</span>
                                 </div>
                               </div>
                             </div>
@@ -1019,7 +1040,7 @@ export default function StaffOS() {
                       </div>
                       <div className="flex justify-between items-center pt-2 border-t border-zinc-800">
                         <span className="text-zinc-500 text-xs uppercase font-bold">Total</span>
-                        <span className="text-[#ff8c00] font-black text-lg">₦{(order.grand_total || 0).toLocaleString()}</span>
+                        <span className="text-[#ff8c00] font-black text-lg">₦{(order.total_price || 0).toLocaleString()}</span>
                       </div>
                     </div>
 

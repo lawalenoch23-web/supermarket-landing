@@ -348,6 +348,33 @@ export default function Delivery() {
                 </div>
               </div>
 
+
+                      {/* Payment Status Indicator */}
+                      {order.payment_status === 'unpaid' && order.address && (
+                        <div className="mt-3 bg-orange-500/10 border border-orange-500/30 rounded-lg p-3 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-orange-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <div>
+                            <p className="text-xs font-bold text-orange-400 uppercase">Collect Payment</p>
+                            <p className="text-[10px] text-zinc-500 mt-0.5">₦{(order.total_price || 0).toLocaleString()} cash on delivery</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Waiting for customer confirmation */}
+                      {order.status === 'DONE' && (
+                        <div className="mt-3 bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <div>
+                            <p className="text-xs font-bold text-blue-400 uppercase">Awaiting Confirmation</p>
+                            <p className="text-[10px] text-zinc-500 mt-0.5">Waiting for customer to confirm receipt</p>
+                          </div>
+                        </div>
+                      )}
+
               {/* Items Summary */}
               <div className="bg-black/30 border border-zinc-900 p-3 rounded-xl">
                 <p className="text-xs text-zinc-500 font-black uppercase mb-2">Order Items</p>

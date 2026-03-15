@@ -1,3 +1,4 @@
+import ExpiryBadge from '../components/ExpiryBadge';
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { 
@@ -87,7 +88,7 @@ export default function Manager() {
   // ✅ Edit Modal State
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
-
+  const [expiringProducts, setExpiringProducts] = useState<any[]>([]);
   // --- 2. ANALYTICS ---
   const filteredOrders = orders.filter(order => {
     const matchesStatus = filterStatus === 'ALL' || order.status === filterStatus;
@@ -185,6 +186,28 @@ export default function Manager() {
     }
   };
 
+  useEffect(() => {
+    const fetchExpiringProducts = async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + 14);
+      const future = futureDate.toISOString().split('T')[0];
+
+      const { data } = await supabase
+        .from('products')
+        .select('*')
+        .not('expiry_date', 'is', null)
+        .lte('expiry_date', future)
+        .order('expiry_date', { ascending: true });
+
+      setExpiringProducts(data || []);
+    };
+
+    fetchExpiringProducts();
+  }, []);
+
+
+  
   // --- CHECK AUTHENTICATION ON MOUNT ---
   useEffect(() => {
     const session = localStorage.getItem('manager_session');
@@ -529,6 +552,36 @@ export default function Manager() {
             </div>
 
             {/* TAB NAVIGATION */}
+            {/* EXPIRING PRODUCTS ALERT */}
+            {expiringProducts.length > 0 && (
+              <div className="bg-gradient-to-br from-red-50 to-orange-50 rounded-2xl shadow-xl p-6 mb-6 border border-red-200">
+                <h2 className="text-2xl font-black mb-4 flex items-center gap-3 text-red-900">
+                  <AlertTriangle className="text-red-600" size={28} />
+                  Expiring Products Alert
+                  <span className="bg-red-600 text-white px-3 py-1 rounded-full text-sm font-black">
+                    {expiringProducts.length} items
+                  </span>
+                </h2>
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {expiringProducts.map((product) => (
+                    <div key={product.id} className="flex items-center justify-between p-4 bg-white rounded-xl hover:shadow-md transition-all border border-red-100">
+                      <div>
+                        <p className="font-black text-gray-900 text-lg">{product.name}</p>
+                        <p className="text-sm text-gray-600 mt-1">
+                          📦 Stock: {product.stock} units | 📅 Expires: {new Date(product.expiry_date).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <ExpiryBadge expiryDate={product.expiry_date} />
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 p-4 bg-yellow-100 rounded-xl border border-yellow-300">
+                  <p className="text-sm text-gray-800 font-semibold">
+                    💡 <strong>Tip:</strong> Discount products expiring soon (20-50% off) to sell them faster and reduce waste!
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="flex gap-2 mb-6 border-b border-zinc-900">
               <button onClick={() => setActiveTab('dashboard')} className={`px-6 py-3 rounded-t-xl text-sm font-black uppercase transition-all ${activeTab === 'dashboard' ? 'bg-zinc-950 border border-b-0 border-zinc-900 text-white' : 'text-zinc-600 hover:text-zinc-400'}`}>📊 Dashboard</button>
               <button onClick={() => setActiveTab('payments')} className={`px-6 py-3 rounded-t-xl text-sm font-black uppercase transition-all ${activeTab === 'payments' ? 'bg-zinc-950 border border-b-0 border-zinc-900 text-white' : 'text-zinc-600 hover:text-zinc-400'}`}>💰 Payments</button>

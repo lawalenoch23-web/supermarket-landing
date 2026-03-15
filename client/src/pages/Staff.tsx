@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
+import ExpiryBadge from '../components/ExpiryBadge';
 import { 
   ShoppingCart, Package, Clock, CheckCircle, Truck, AlertCircle, 
   User, MapPin, Phone, Plus, Minus, Trash2, LogOut, X, Save, Edit3, 
@@ -59,7 +60,16 @@ export default function StaffOS() {
   const [newPrice, setNewPrice] = useState('');
   const [newStock, setNewStock] = useState('10');
   const [newCategory, setNewCategory] = useState('');
-  const [newProduct, setNewProduct] = useState({ name: '', price: '', image_url: '', category: '', stock: '10' });
+  const [newProduct, setNewProduct] = useState({ 
+    name: '', 
+    price: '', 
+    image_url: '', 
+    category: '', 
+    stock: '10',
+    expiry_date: null as string | null,
+    is_perishable: false,
+    alert_days_before: 7
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('DEFAULT');
 
@@ -403,12 +413,24 @@ export default function StaffOS() {
       category: newCategory,
       image: newProduct.image_url || 'https://via.placeholder.com/400',
       image_url: newProduct.image_url || 'https://via.placeholder.com/400',
-      stock: parseInt(newStock) || 10
+      stock: parseInt(newStock) || 10,
+      expiry_date: newProduct.expiry_date,
+      is_perishable: newProduct.is_perishable,
+      alert_days_before: newProduct.alert_days_before || 7
     }]);
     if (error) { alert("Failed to add product: " + error.message); }
     else {
       setNewName(''); setNewPrice(''); setNewCategory(''); setNewStock('10');
-      setNewProduct({ name: '', price: '', image_url: '', category: '', stock: '10' });
+      setNewProduct({ 
+        name: '', 
+        price: '', 
+        image_url: '', 
+        category: '', 
+        stock: '10',
+        expiry_date: null,
+        is_perishable: false,
+        alert_days_before: 7
+      });
       fetchData(); alert("Product added!");
     }
   };
@@ -665,7 +687,7 @@ export default function StaffOS() {
                   const stock = product.stock || 0;
                   const isSoldOut = stock <= 0;
                   const isLowStock = stock > 0 && stock < 5;
-
+  
                   return (
                     <button
                       key={product.id}
@@ -685,6 +707,7 @@ export default function StaffOS() {
                         </div>
                       )}
                       <h3 className="font-bold text-white mb-1 truncate">{product.name}</h3>
+                      <ExpiryBadge expiryDate={product.expiry_date} />
                       <p className="text-[#ff8c00] font-black text-lg">₦{(product.price || 0).toLocaleString()}</p>
                       <p className={`text-xs mt-1 font-bold ${isSoldOut ? 'text-red-500' : isLowStock ? 'text-yellow-500' : 'text-zinc-500'}`}>
                         {isSoldOut ? 'OUT OF STOCK' : `Stock: ${stock}`}
@@ -732,6 +755,37 @@ export default function StaffOS() {
                         <option value="">Select Category...</option>
                         {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                       </select>
+                    </div>
+                    {/* Expiry Date Section */}
+                    <div>
+                      <label className="flex items-center gap-2 text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 block">
+                        <input
+                          type="checkbox"
+                          checked={newProduct.is_perishable || false}
+                          onChange={(e) => setNewProduct({...newProduct, is_perishable: e.target.checked})}
+                          className="rounded"
+                        />
+                        <span>Perishable Item (Track Expiry)</span>
+                      </label>
+
+                      {newProduct.is_perishable && (
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 block">
+                            Expiry Date
+                          </label>
+                          <input
+                            type="date"
+                            value={newProduct.expiry_date || ''}
+                            onChange={(e) => setNewProduct({...newProduct, expiry_date: e.target.value})}
+                            className="w-full bg-[#1a1a1a] border border-zinc-800 rounded-xl px-4 py-3 text-xs font-black uppercase outline-none focus:border-[#ff8c00] transition-all"
+                            min={new Date().toISOString().split('T')[0]}
+                            required
+                          />
+                          <p className="text-xs text-zinc-500">
+                            ⚠️ Alert shows 7 days before expiry
+                          </p>
+                        </div>
+                      )}
                     </div>
                     <div className="sm:col-span-2">
                       <label className="text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 block">Product Image</label>

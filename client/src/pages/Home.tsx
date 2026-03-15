@@ -104,7 +104,7 @@ export default function Home() {
 
   // --- 7. DATA FETCHING ---
   const fetchProducts = async () => {
-    const { data } = await supabase.from('products').select('*').order('id', { ascending: true });
+    const { data } = await supabase.from('products').select('*').gt('stock', 0).or(`expiry_date.is.null,expiry_date.gte.${today}`).order('id', { ascending: true });
     if (data) setMenuItems(data);
   };
   const fetchCategories = async () => {
@@ -692,6 +692,7 @@ export default function Home() {
                   className="absolute top-5 right-5 bg-black/50 p-4 rounded-full backdrop-blur-md hover:bg-black/70 transition-all active:scale-95"
                 >
                   <Heart size={14} className={`transition-all ${favorites.includes(item.id) ? 'fill-orange-500 text-orange-500 scale-110' : 'text-white'}`} />
+                  <ExpiryBadge expiryDate={product.expiry_date} />
                 </button>
               </div>
               <div className="px-4 text-center">

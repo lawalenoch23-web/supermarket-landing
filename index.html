@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grandpa's Dream — Supermarket OS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --black: #080808;
+            --off-black: #111111;
+            --card-bg: #141414;
+            --border: rgba(255,255,255,0.08);
+            --border-strong: rgba(255,255,255,0.15);
+            --white: #f5f5f5;
+            --white-dim: rgba(245,245,245,0.55);
+            --white-faint: rgba(245,245,245,0.12);
+            --accent: #f97316;
+            --accent-dim: rgba(249,115,22,0.15);
+            --accent-glow: rgba(249,115,22,0.3);
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--black);
+            color: var(--white);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Noise texture overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 999;
+            opacity: 0.6;
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+
+        /* ── TYPOGRAPHY ── */
+        .display { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.02em; line-height: 0.95; }
+        h2 { font-size: clamp(36px, 5vw, 56px); font-weight: 800; line-height: 1.1; }
+        .accent-text { color: var(--accent); }
+        .dim { color: var(--white-dim); }
+
+        /* ── ANIMATIONS ── */
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(24px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50%       { transform: translateY(-12px); }
+        }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%       { opacity: 0.4; transform: scale(0.8); }
+        }
+        .fade-up { animation: fadeUp 0.7s ease both; }
+        .delay-1 { animation-delay: 0.1s; }
+        .delay-2 { animation-delay: 0.2s; }
+        .delay-3 { animation-delay: 0.35s; }
+
+        /* ── HEADER ── */
+        .header {
+            position: sticky; top: 0; z-index: 100;
+            padding: 20px 0;
+            background: rgba(8,8,8,0.9);
+            backdrop-filter: blur(24px);
+            border-bottom: 1px solid var(--border);
+        }
+        .nav { display: flex; justify-content: space-between; align-items: center; }
+        .logo { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+        .logo img { height: 38px; }
+        .logo-wordmark {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 22px;
+            letter-spacing: 0.04em;
+            color: var(--white);
+        }
+        .logo-wordmark span { color: var(--accent); }
+        .nav-links { display: flex; gap: 36px; align-items: center; }
+        .nav-links a {
+            color: var(--white-dim);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover { color: var(--white); }
+        .btn-nav {
+            background: var(--accent);
+            color: var(--white) !important;
+            padding: 10px 22px;
+            border-radius: 6px;
+            font-weight: 700 !important;
+            font-size: 13px !important;
+            transition: all 0.2s !important;
+        }
+        .btn-nav:hover { background: #ff6020 !important; transform: translateY(-1px); }
+
+        /* ── HERO ── */
+        .hero {
+            min-height: 92vh;
+            display: flex;
+            align-items: center;
+            padding: 100px 0 80px;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero-bg-orb {
+            position: absolute;
+            width: 700px; height: 700px;
+            background: radial-gradient(circle, rgba(255,72,0,0.12) 0%, transparent 65%);
+            top: -150px; right: -200px;
+            pointer-events: none;
+        }
+        .hero-bg-grid {
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+            background-size: 60px 60px;
+            pointer-events: none;
+            mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black, transparent);
+        }
+        .hero-inner {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            align-items: center;
+            position: relative; z-index: 1;
+        }
+        .hero-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--accent-dim);
+            border: 1px solid var(--accent-glow);
+            color: var(--accent);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            padding: 7px 14px;
+            border-radius: 4px;
+            margin-bottom: 28px;
+        }
+        .live-dot {
+            width: 7px; height: 7px;
+            background: var(--accent);
+            border-radius: 50%;
+            animation: pulse-dot 1.5s ease infinite;
+        }
+        .hero h1 {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(64px, 8vw, 110px);
+            line-height: 0.93;
+            letter-spacing: 0.02em;
+            margin-bottom: 28px;
+        }
+        .hero-subtitle {
+            font-size: 17px;
+            color: var(--white-dim);
+            line-height: 1.75;
+            margin-bottom: 44px;
+            max-width: 480px;
+            font-weight: 400;
+        }
+        .cta-group { display: flex; gap: 14px; flex-wrap: wrap; }
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            padding: 15px 32px;
+            font-size: 14px; font-weight: 700;
+            text-decoration: none;
+            border-radius: 6px;
+            transition: all 0.25s;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-family: 'Outfit', sans-serif;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+            border: 2px solid var(--accent);
+        }
+        .btn-primary:hover { background: #ff6020; border-color: #ff6020; transform: translateY(-2px); box-shadow: 0 8px 32px var(--accent-glow); }
+        .btn-ghost {
+            background: transparent;
+            color: var(--white);
+            border: 2px solid var(--border-strong);
+        }
+        .btn-ghost:hover { border-color: var(--white); transform: translateY(-2px); }
+
+        /* Hero right: floating dashboard mockup */
+        .hero-visual {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .hero-mockup {
+            background: var(--card-bg);
+            border: 1px solid var(--border-strong);
+            border-radius: 16px;
+            padding: 24px;
+            width: 100%;
+            max-width: 460px;
+            box-shadow: 0 40px 100px rgba(0,0,0,0.6), 0 0 0 1px var(--border);
+            animation: float 6s ease-in-out infinite;
+        }
+        .mockup-bar {
+            display: flex; align-items: center; gap: 8px;
+            margin-bottom: 20px; padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .mockup-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .mockup-label { font-size: 12px; font-weight: 700; color: var(--white-dim); letter-spacing: 0.1em; text-transform: uppercase; margin-left: auto; }
+        .mockup-stats {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;
+        }
+        .mstat {
+            background: var(--off-black);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+        }
+        .mstat-val { font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: var(--white); }
+        .mstat-val.orange { color: var(--accent); }
+        .mstat-label { font-size: 11px; color: var(--white-dim); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+        .mockup-orders { display: flex; flex-direction: column; gap: 8px; }
+        .morder {
+            display: flex; align-items: center; justify-content: space-between;
+            background: var(--off-black); border: 1px solid var(--border);
+            border-radius: 8px; padding: 10px 14px;
+        }
+        .morder-name { font-size: 13px; font-weight: 600; }
+        .morder-price { font-size: 13px; font-weight: 700; color: var(--accent); }
+        .morder-status {
+            font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+            padding: 3px 8px; border-radius: 4px; text-transform: uppercase;
+        }
+        .status-ready { background: rgba(16,185,129,0.15); color: #10b981; }
+        .status-prep  { background: rgba(59,130,246,0.15);  color: #3b82f6; }
+        .status-pend  { background: rgba(234,179,8,0.15);   color: #eab308; }
+
+        /* ── TICKER ── */
+        .ticker {
+            background: var(--accent);
+            padding: 12px 0;
+            overflow: hidden;
+        }
+        .ticker-track {
+            display: flex;
+            white-space: nowrap;
+            animation: ticker-scroll 28s linear infinite;
+        }
+        @keyframes ticker-scroll {
+            from { transform: translateX(0); }
+            to   { transform: translateX(-50%); }
+        }
+        .ticker-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: white;
+            padding: 0 32px;
+        }
+        .ticker-divider { opacity: 0.5; }
+
+        /* ── STATS ── */
+        .stats { padding: 100px 0; border-top: 1px solid var(--border); }
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+        .stat-item {
+            background: var(--card-bg);
+            padding: 52px 36px;
+            text-align: center;
+            transition: background 0.3s;
+        }
+        .stat-item:hover { background: #1a1a1a; }
+        .stat-icon { font-size: 36px; margin-bottom: 20px; display: block; }
+        .stat-number {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 56px;
+            line-height: 1;
+            color: var(--white);
+            margin-bottom: 10px;
+            letter-spacing: 0.02em;
+        }
+        .stat-number span { color: var(--accent); }
+        .stat-label { font-size: 13px; color: var(--white-dim); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
+
+        /* ── PORTALS ── */
+        .portals { padding: 100px 0; background: var(--off-black); border-top: 1px solid var(--border); }
+        .section-header { text-align: center; margin-bottom: 72px; }
+        .section-tag {
+            display: inline-block;
+            font-size: 12px; font-weight: 700;
+            letter-spacing: 0.14em; text-transform: uppercase;
+            color: var(--accent); margin-bottom: 16px;
+        }
+        .section-header h2 { margin-bottom: 16px; }
+        .section-header p { font-size: 17px; color: var(--white-dim); max-width: 500px; margin: 0 auto; }
+
+        .portals-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px; background: var(--border); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; }
+        .portal-card {
+            background: var(--card-bg);
+            padding: 52px 44px;
+            cursor: pointer;
+            transition: background 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+        .portal-card::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 3px;
+            background: var(--accent);
+            transform: scaleX(0);
+            transition: transform 0.3s;
+            transform-origin: left;
+        }
+        .portal-card:hover { background: #1a1a1a; }
+        .portal-card:hover::after { transform: scaleX(1); }
+        .portal-icon {
+            font-size: 48px;
+            display: block;
+            margin-bottom: 24px;
+        }
+        .portal-num {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 13px;
+            letter-spacing: 0.12em;
+            color: var(--accent);
+            margin-bottom: 12px;
+        }
+        .portal-card h3 { font-size: 26px; font-weight: 800; margin-bottom: 12px; }
+        .portal-card p { color: var(--white-dim); font-size: 15px; line-height: 1.65; margin-bottom: 28px; }
+        .portal-link {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-size: 13px; font-weight: 700;
+            color: var(--accent);
+            letter-spacing: 0.06em; text-transform: uppercase;
+        }
+        .portal-link-arrow { transition: transform 0.2s; }
+        .portal-card:hover .portal-link-arrow { transform: translateX(4px); }
+
+        /* ── MODAL ── */
+        .modal {
+            display: none; position: fixed;
+            inset: 0; z-index: 1000;
+            background: rgba(0,0,0,0.92);
+            backdrop-filter: blur(16px);
+            overflow-y: auto;
+            align-items: center; justify-content: center;
+            padding: 40px 20px;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: var(--card-bg);
+            border: 1px solid var(--border-strong);
+            border-radius: 20px;
+            max-width: 800px; width: 100%;
+            position: relative;
+        }
+        .modal-header {
+            padding: 32px 40px;
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .modal-header h3 { font-size: 28px; font-weight: 800; }
+        .modal-close {
+            width: 36px; height: 36px;
+            background: var(--off-black);
+            border: 1px solid var(--border-strong);
+            border-radius: 6px;
+            color: var(--white);
+            font-size: 18px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+        }
+        .modal-close:hover { background: var(--accent); border-color: var(--accent); }
+        .modal-body { padding: 40px; }
+        .modal-desc { font-size: 16px; color: var(--white-dim); line-height: 1.75; margin-bottom: 36px; }
+        .modal-steps { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+        /* Modal with screenshots layout */
+        .modal-with-images { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; padding: 40px; align-items: start; }
+        .modal-carousel-wrap { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: var(--off-black); }
+        .modal-carousel-track { display: flex; transition: transform 0.35s cubic-bezier(0.4,0,0.2,1); }
+        .modal-carousel-track img { min-width: 100%; width: 100%; object-fit: cover; aspect-ratio: 16/10; display: block; }
+        .car-arrow {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            width: 34px; height: 34px;
+            background: rgba(0,0,0,0.75); border: 1px solid var(--border-strong);
+            border-radius: 6px; color: var(--white);
+            font-size: 16px; cursor: pointer; z-index: 5;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s;
+        }
+        .car-arrow:hover { background: var(--accent); border-color: var(--accent); }
+        .car-left { left: 10px; } .car-right { right: 10px; }
+        .car-dots { display: flex; justify-content: center; gap: 6px; padding: 12px 0 8px; }
+        .car-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border-strong); cursor: pointer; transition: all 0.2s; }
+        .car-dot.active { background: var(--accent); width: 18px; border-radius: 3px; }
+        @media (max-width: 700px) { .modal-with-images { grid-template-columns: 1fr; } }
+        .modal-step {
+            background: var(--off-black);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px 24px;
+            display: flex; align-items: flex-start; gap: 16px;
+        }
+        .step-num {
+            width: 32px; height: 32px; flex-shrink: 0;
+            background: var(--accent);
+            color: white;
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 14px;
+        }
+        .step-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+        .step-desc { font-size: 13px; color: var(--white-dim); line-height: 1.5; }
+
+        /* ── COMPARISON ── */
+        .comparison { padding: 100px 0; border-top: 1px solid var(--border); }
+        .comparison-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 64px; }
+        .comparison-card {
+            border-radius: 20px; padding: 52px 44px;
+            position: relative;
+        }
+        .comparison-before { background: #110a0a; border: 1px solid rgba(239,68,68,0.25); }
+        .comparison-after  { background: #0a1110; border: 1px solid rgba(16,185,129,0.25); }
+        .comparison-badge {
+            position: absolute; top: -16px; left: 40px;
+            padding: 6px 18px; border-radius: 4px;
+            font-size: 12px; font-weight: 800;
+            text-transform: uppercase; letter-spacing: 0.1em;
+        }
+        .badge-before { background: #ef4444; color: white; }
+        .badge-after  { background: #10b981; color: white; }
+        .comparison-card h3 { font-size: 22px; font-weight: 800; margin-bottom: 28px; margin-top: 12px; }
+        .comparison-list { list-style: none; }
+        .comparison-list li {
+            padding: 13px 0;
+            font-size: 15px;
+            color: var(--white-dim);
+            display: flex; align-items: center; gap: 14px;
+            border-bottom: 1px solid var(--border);
+        }
+        .comparison-list li:last-child { border-bottom: none; }
+        .comparison-before .comparison-list li::before { content: "✕"; color: #ef4444; font-weight: 900; font-size: 14px; flex-shrink: 0; }
+        .comparison-after  .comparison-list li::before { content: "✓"; color: #10b981; font-weight: 900; font-size: 16px; flex-shrink: 0; }
+
+        /* ── PRICING ── */
+        .pricing { padding: 100px 0; background: var(--off-black); border-top: 1px solid var(--border); }
+        .pricing-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 24px; margin-top: 64px;
+            max-width: 1000px; margin-left: auto; margin-right: auto;
+        }
+        .pricing-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 44px 36px;
+            position: relative;
+            transition: all 0.3s;
+        }
+        .pricing-card:hover { border-color: var(--border-strong); transform: translateY(-4px); }
+        .pricing-card.featured {
+            border-color: var(--accent);
+            background: #160d08;
+        }
+        .pricing-badge {
+            position: absolute; top: -16px; left: 50%; transform: translateX(-50%);
+            background: var(--accent); color: white;
+            padding: 6px 18px; border-radius: 4px;
+            font-size: 12px; font-weight: 800;
+            text-transform: uppercase; letter-spacing: 0.1em;
+            white-space: nowrap;
+        }
+        .pricing-name { font-size: 13px; font-weight: 700; letter-spacing: 0.12em; color: var(--white-dim); text-transform: uppercase; margin-bottom: 16px; }
+        .price { font-family: 'Bebas Neue', sans-serif; font-size: 60px; color: var(--white); line-height: 1; margin-bottom: 8px; letter-spacing: 0.02em; }
+        .pricing-desc { font-size: 14px; color: var(--white-dim); margin-bottom: 32px; }
+        .pricing-features { list-style: none; margin-bottom: 36px; }
+        .pricing-features li {
+            padding: 11px 0;
+            font-size: 14px; color: var(--white-dim);
+            display: flex; align-items: center; gap: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .pricing-features li:last-child { border-bottom: none; }
+        .pricing-features li::before { content: "—"; color: var(--accent); font-weight: 900; flex-shrink: 0; }
+        .pricing-card.featured .pricing-features li::before { content: "✓"; font-size: 14px; }
+
+        /* ── CTA SECTION ── */
+        .cta-section {
+            padding: 120px 0;
+            text-align: center;
+            border-top: 1px solid var(--border);
+            position: relative; overflow: hidden;
+        }
+        .cta-section::before {
+            content: '';
+            position: absolute;
+            width: 600px; height: 600px;
+            background: radial-gradient(circle, rgba(255,72,0,0.08), transparent 65%);
+            left: 50%; top: 50%; transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        .cta-section h2 { font-size: clamp(40px, 6vw, 72px); font-weight: 800; margin-bottom: 20px; position: relative; }
+        .cta-section p { font-size: 18px; color: var(--white-dim); margin-bottom: 44px; max-width: 520px; margin-left: auto; margin-right: auto; position: relative; }
+        .cta-group { position: relative; }
+
+        /* ── FOOTER ── */
+        .footer {
+            background: var(--off-black);
+            border-top: 1px solid var(--border);
+            padding: 72px 0 40px;
+        }
+        .footer-top {
+            display: grid; grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 48px; margin-bottom: 64px;
+        }
+        .footer-brand p { font-size: 14px; color: var(--white-dim); line-height: 1.7; margin-top: 16px; max-width: 260px; }
+        .footer-section h4 {
+            font-size: 12px; font-weight: 700; letter-spacing: 0.1em;
+            text-transform: uppercase; color: var(--white);
+            margin-bottom: 20px;
+        }
+        .footer-section a {
+            display: block; color: var(--white-dim); text-decoration: none;
+            font-size: 14px; margin-bottom: 12px; transition: color 0.2s;
+        }
+        .footer-section a:hover { color: var(--accent); }
+        .footer-bottom {
+            padding-top: 32px; border-top: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .footer-bottom p { font-size: 13px; color: var(--white-dim); }
+        .footer-flag { font-size: 13px; color: var(--white-dim); }
+
+        /* ── MOBILE ── */
+        @media (max-width: 900px) {
+            .hero-inner { grid-template-columns: 1fr; }
+            .hero-visual { display: none; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .portals-grid { grid-template-columns: 1fr; }
+            .comparison-grid { grid-template-columns: 1fr; }
+            .pricing-grid { grid-template-columns: 1fr; }
+            .footer-top { grid-template-columns: 1fr 1fr; }
+            .modal-steps { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 600px) {
+            .container { padding: 0 20px; }
+            .nav-links { display: none; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+            .footer-top { grid-template-columns: 1fr; }
+            .footer-bottom { flex-direction: column; gap: 12px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ── HEADER ── -->
+    <header class="header">
+        <div class="container">
+            <nav class="nav">
+                <a href="#" class="logo">
+                    <img src="logo.png" alt="Grandpa's Dream" style="height:42px;border-radius:8px;">
+                    <div class="logo-wordmark">Grandpa's <span>Dream</span></div>
+                </a>
+                <div class="nav-links">
+                    <a href="#how-it-works">How It Works</a>
+                    <a href="#pricing">Pricing</a>
+                    <a href="https://grandpas-dream-supermarket.vercel.app" target="_blank">Live Demo</a>
+                    <a href="#contact" class="btn-nav">Book Demo</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- ── HERO ── -->
+    <section class="hero">
+        <div class="hero-bg-orb"></div>
+        <div class="hero-bg-grid"></div>
+        <div class="container">
+            <div class="hero-inner">
+                <div>
+                    <div class="hero-tag fade-up">
+                        <span class="live-dot"></span>
+                        Built for Nigerian Supermarkets
+                    </div>
+                    <h1 class="fade-up delay-1">
+                        Your<br>
+                        Supermarket,<br>
+                        <span class="accent-text">Fully<br>Automated.</span>
+                    </h1>
+                    <p class="hero-subtitle fade-up delay-2">
+                        Stop losing money to expired products, missing cash, and manual chaos. One system handles everything — orders, inventory, delivery, analytics. Save <strong style="color:var(--white)">₦118,000 monthly.</strong>
+                    </p>
+                    <div class="cta-group fade-up delay-3">
+                        <a href="#how-it-works" class="btn btn-primary">See How It Works →</a>
+                        <a href="https://grandpas-dream-supermarket.vercel.app" class="btn btn-ghost" target="_blank">Try Live Demo</a>
+                    </div>
+                </div>
+
+                <!-- Dashboard Mockup -->
+                <div class="hero-visual">
+                    <div class="hero-mockup fade-up delay-2">
+                        <div class="mockup-bar">
+                            <div class="mockup-dot" style="background:#ef4444"></div>
+                            <div class="mockup-dot" style="background:#f59e0b"></div>
+                            <div class="mockup-dot" style="background:#10b981"></div>
+                            <span class="mockup-label">Manager Dashboard</span>
+                        </div>
+                        <div class="mockup-stats">
+                            <div class="mstat">
+                                <div class="mstat-val orange">₦84k</div>
+                                <div class="mstat-label">Today's Revenue</div>
+                            </div>
+                            <div class="mstat">
+                                <div class="mstat-val">23</div>
+                                <div class="mstat-label">Orders Today</div>
+                            </div>
+                            <div class="mstat">
+                                <div class="mstat-val">97%</div>
+                                <div class="mstat-label">Stock Health</div>
+                            </div>
+                            <div class="mstat">
+                                <div class="mstat-val orange">₦0</div>
+                                <div class="mstat-label">Cash Missing</div>
+                            </div>
+                        </div>
+                        <div class="mockup-orders">
+                            <div class="morder">
+                                <span class="morder-name">Adaeze O.</span>
+                                <span class="morder-price">₦4,200</span>
+                                <span class="morder-status status-ready">Ready</span>
+                            </div>
+                            <div class="morder">
+                                <span class="morder-name">Emeka C.</span>
+                                <span class="morder-price">₦7,800</span>
+                                <span class="morder-status status-prep">Packing</span>
+                            </div>
+                            <div class="morder">
+                                <span class="morder-name">Funmi B.</span>
+                                <span class="morder-price">₦2,500</span>
+                                <span class="morder-status status-pend">Pending</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── TICKER ── -->
+    <div class="ticker">
+        <div class="ticker-track">
+            <span class="ticker-item">📦 Auto Inventory Updates <span class="ticker-divider">·</span></span>
+            <span class="ticker-item">💰 Every Naira Tracked <span class="ticker-divider">·</span></span>
+            <span class="ticker-item">🚛 Live Delivery Tracking <span class="ticker-divider">·</span></span>
+            <span class="ticker-item">⚡ 2-Day Setup <span class="ticker-divider">·</span></span>
+            <span class="ticker-item">📊 Real-Time Analytics <span class="ticker-divider">·</span></span>
+            <span class="ticker-item">🛡️ Expiry Alerts <span class="ticker-divider">·</span></span>
+            <span class="ticker-item">📱 Online Orders 24/7 <span class="ticker-divider">·</span></span>
+            <span class="ticker-item">🇳🇬 Made in Nigeria <span class="ticker-divider">·</span></span>
+            <!-- duplicate for seamless loop -->
+            <span class="ticker-item">📦 Auto Inventory Updates <span class="ticker-divider">·</span></span>
+            <span class="ticker-item">💰 Every Naira Tracked <span class="ticker-divider">·</span></span>
+            <span class="ticker-item">🚛 Live Delivery Tracking <span class="ticker-divider">·</span></span>
+            <span class="ticker-item">⚡ 2-Day Setup <span class="ticker-divider">·</span></span>
+            <span class="ticker-item">📊 Real-Time Analytics <span class="ticker-divider">·</span></span>
+            <span class="ticker-item">🛡️ Expiry Alerts <span class="ticker-divider">·</span></span>
+            <span class="ticker-item">📱 Online Orders 24/7 <span class="ticker-divider">·</span></span>
+            <span class="ticker-item">🇳🇬 Made in Nigeria <span class="ticker-divider">·</span></span>
+        </div>
+    </div>
+
+    <!-- ── STATS ── -->
+    <section class="stats">
+        <div class="container">
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-icon">💰</span>
+                    <div class="stat-number"><span>₦118k</span></div>
+                    <div class="stat-label">Saved Monthly</div>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-icon">⚡</span>
+                    <div class="stat-number">80<span>%</span></div>
+                    <div class="stat-label">Less Manual Work</div>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-icon">🚀</span>
+                    <div class="stat-number">2–3 <span style="font-size:32px">Days</span></div>
+                    <div class="stat-label">Setup Time</div>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-icon">🌙</span>
+                    <div class="stat-number">24/<span>7</span></div>
+                    <div class="stat-label">Online Orders</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── PORTALS ── -->
+    <section class="portals" id="how-it-works">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-tag">Four Portals. One System.</div>
+                <h2>See It <span class="accent-text">In Action</span></h2>
+                <p>Click any portal to see a detailed walkthrough of how it works.</p>
+            </div>
+            <div class="portals-grid">
+                <div class="portal-card" onclick="openModal('customer')">
+                    <span class="portal-icon">📱</span>
+                    <div class="portal-num">01 — Customer</div>
+                    <h3>Customer Portal</h3>
+                    <p>Customers browse your full catalogue, add to cart, and check out in under 60 seconds. No phone calls. No back-and-forth.</p>
+                    <span class="portal-link">View Walkthrough <span class="portal-link-arrow">→</span></span>
+                </div>
+                <div class="portal-card" onclick="openModal('staff')">
+                    <span class="portal-icon">👨‍💼</span>
+                    <div class="portal-num">02 — Staff</div>
+                    <h3>Staff Portal</h3>
+                    <p>Orders appear the instant they're placed. Staff pack, inventory auto-deducts. No spreadsheets. No confusion.</p>
+                    <span class="portal-link">View Walkthrough <span class="portal-link-arrow">→</span></span>
+                </div>
+                <div class="portal-card" onclick="openModal('driver')">
+                    <span class="portal-icon">🚛</span>
+                    <div class="portal-num">03 — Driver</div>
+                    <h3>Driver Portal</h3>
+                    <p>See all pending deliveries, get the address, mark as delivered, and record cash collected. Nothing goes missing.</p>
+                    <span class="portal-link">View Walkthrough <span class="portal-link-arrow">→</span></span>
+                </div>
+                <div class="portal-card" onclick="openModal('manager')">
+                    <span class="portal-icon">📊</span>
+                    <div class="portal-num">04 — Manager</div>
+                    <h3>Manager Dashboard</h3>
+                    <p>Revenue, orders, payments, expiring stock — all on one screen. Know exactly what's happening at all times.</p>
+                    <span class="portal-link">View Walkthrough <span class="portal-link-arrow">→</span></span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── MODALS ── -->
+    <div class="modal" id="modal-customer">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📱 Customer Portal</h3>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-with-images">
+                <div>
+                    <div class="modal-carousel-wrap">
+                        <div class="modal-carousel-track" id="car-customer">
+                            <img src="customer-storefront_1.png" alt="Customer storefront">
+                            <img src="customer-storefront_2.png" alt="Customer checkout">
+                        </div>
+                        <button class="car-arrow car-left" onclick="moveCar('customer',-1)">‹</button>
+                        <button class="car-arrow car-right" onclick="moveCar('customer',1)">›</button>
+                        <div class="car-dots" id="dots-customer">
+                            <div class="car-dot active" onclick="setCar('customer',0)"></div>
+                            <div class="car-dot" onclick="setCar('customer',1)"></div>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <p class="modal-desc">Customers browse your products, see live prices and stock, add to cart, and check out in under 60 seconds. No phone calls needed.</p>
+                    <div class="modal-steps">
+                        <div class="modal-step"><div class="step-num">1</div><div><div class="step-title">Browse Products</div><div class="step-desc">Real-time stock and prices. No outdated info.</div></div></div>
+                        <div class="modal-step"><div class="step-num">2</div><div><div class="step-title">Add to Cart</div><div class="step-desc">Auto-checks stock availability before adding.</div></div></div>
+                        <div class="modal-step"><div class="step-num">3</div><div><div class="step-title">Checkout</div><div class="step-desc">Name, address, phone — done in 30 seconds.</div></div></div>
+                        <div class="modal-step"><div class="step-num">4</div><div><div class="step-title">Live Tracking</div><div class="step-desc">Customer sees status updates automatically.</div></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="modal-staff">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>👨‍💼 Staff Portal</h3>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-with-images">
+                <div>
+                    <div class="modal-carousel-wrap">
+                        <div class="modal-carousel-track" id="car-staff">
+                            <img src="staff-1.png" alt="Staff login">
+                            <img src="staff-2.png" alt="Staff POS">
+                        </div>
+                        <button class="car-arrow car-left" onclick="moveCar('staff',-1)">‹</button>
+                        <button class="car-arrow car-right" onclick="moveCar('staff',1)">›</button>
+                        <div class="car-dots" id="dots-staff">
+                            <div class="car-dot active" onclick="setCar('staff',0)"></div>
+                            <div class="car-dot" onclick="setCar('staff',1)"></div>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <p class="modal-desc">Online orders appear the moment they're placed. Staff see the full item list, pack the order, and inventory deducts automatically. Built-in expiry alerts prevent waste.</p>
+                    <div class="modal-steps">
+                        <div class="modal-step"><div class="step-num">1</div><div><div class="step-title">See Orders</div><div class="step-desc">Full item list appears instantly. No calls.</div></div></div>
+                        <div class="modal-step"><div class="step-num">2</div><div><div class="step-title">Pack & Confirm</div><div class="step-desc">Stock auto-reduces when order is packed.</div></div></div>
+                        <div class="modal-step"><div class="step-num">3</div><div><div class="step-title">Expiry Warnings</div><div class="step-desc">RED/YELLOW alerts before products expire.</div></div></div>
+                        <div class="modal-step"><div class="step-num">4</div><div><div class="step-title">Notify Driver</div><div class="step-desc">Driver is alerted automatically when ready.</div></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="modal-driver">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🚛 Driver Portal</h3>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-with-images">
+                <div>
+                    <div class="modal-carousel-wrap">
+                        <div class="modal-carousel-track" id="car-driver">
+                            <img src="delivery-1.png" alt="Driver login">
+                            <img src="deivery-2.png" alt="Driver deliveries">
+                        </div>
+                        <button class="car-arrow car-left" onclick="moveCar('driver',-1)">‹</button>
+                        <button class="car-arrow car-right" onclick="moveCar('driver',1)">›</button>
+                        <div class="car-dots" id="dots-driver">
+                            <div class="car-dot active" onclick="setCar('driver',0)"></div>
+                            <div class="car-dot" onclick="setCar('driver',1)"></div>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <p class="modal-desc">Drivers see all ready deliveries, get full customer address and items, mark as delivered, and log the cash they collected. No missing money. No disputes.</p>
+                    <div class="modal-steps">
+                        <div class="modal-step"><div class="step-num">1</div><div><div class="step-title">View Deliveries</div><div class="step-desc">All ready orders in one clean list.</div></div></div>
+                        <div class="modal-step"><div class="step-num">2</div><div><div class="step-title">Accept Order</div><div class="step-desc">Driver confirms pickup at the store.</div></div></div>
+                        <div class="modal-step"><div class="step-num">3</div><div><div class="step-title">Navigate</div><div class="step-desc">Full address displayed for easy delivery.</div></div></div>
+                        <div class="modal-step"><div class="step-num">4</div><div><div class="step-title">Record Cash</div><div class="step-desc">Logs amount collected. Every naira tracked.</div></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="modal-manager">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📊 Manager Dashboard</h3>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-with-images">
+                <div>
+                    <div class="modal-carousel-wrap">
+                        <div class="modal-carousel-track" id="car-manager">
+                            <img src="manager-1.png" alt="Manager login">
+                            <img src="manager-2.png" alt="Manager dashboard">
+                        </div>
+                        <button class="car-arrow car-left" onclick="moveCar('manager',-1)">‹</button>
+                        <button class="car-arrow car-right" onclick="moveCar('manager',1)">›</button>
+                        <div class="car-dots" id="dots-manager">
+                            <div class="car-dot active" onclick="setCar('manager',0)"></div>
+                            <div class="car-dot" onclick="setCar('manager',1)"></div>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <p class="modal-desc">One screen gives you complete visibility: today's revenue, all order statuses, cash reconciliation, and expiry alerts that save you up to ₦40,000 per month.</p>
+                    <div class="modal-steps">
+                        <div class="modal-step"><div class="step-num">1</div><div><div class="step-title">Live Revenue</div><div class="step-desc">See daily and weekly sales in real time.</div></div></div>
+                        <div class="modal-step"><div class="step-num">2</div><div><div class="step-title">All Orders</div><div class="step-desc">Track every order from placed to delivered.</div></div></div>
+                        <div class="modal-step"><div class="step-num">3</div><div><div class="step-title">Cash Reconciliation</div><div class="step-desc">Compare expected vs collected. Catch gaps.</div></div></div>
+                        <div class="modal-step"><div class="step-num">4</div><div><div class="step-title">Expiry Alerts</div><div class="step-desc">Act before expiry. Save up to ₦40k/month.</div></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── COMPARISON ── -->
+    <section class="comparison">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-tag">The Real Difference</div>
+                <h2>Before <span class="accent-text">vs After</span></h2>
+                <p>What automation actually changes in your store.</p>
+            </div>
+            <div class="comparison-grid">
+                <div class="comparison-card comparison-before">
+                    <div class="comparison-badge badge-before">Before</div>
+                    <h3>Current Reality</h3>
+                    <ul class="comparison-list">
+                        <li>Phone calls all day long</li>
+                        <li>10+ hours counting stock weekly</li>
+                        <li>₦40k in expired products monthly</li>
+                        <li>Missing cash (₦25k/month)</li>
+                        <li>No idea what's actually selling</li>
+                        <li>Overwhelmed, error-prone staff</li>
+                    </ul>
+                </div>
+                <div class="comparison-card comparison-after">
+                    <div class="comparison-badge badge-after">After</div>
+                    <h3>With This System</h3>
+                    <ul class="comparison-list">
+                        <li>Online orders around the clock</li>
+                        <li>Auto inventory — done in 2 minutes</li>
+                        <li>Expiry alerts save ₦40k monthly</li>
+                        <li>Every naira logged and tracked</li>
+                        <li>Real-time analytics at a glance</li>
+                        <li>Staff focused purely on packing</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── PRICING ── -->
+    <section class="pricing" id="pricing">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-tag">One-Time Payment. No Monthly Fees.</div>
+                <h2><span class="accent-text">Simple</span> Pricing</h2>
+                <p>Own the system outright. No subscriptions, no surprises.</p>
+            </div>
+            <div class="pricing-grid">
+                <div class="pricing-card">
+                    <div class="pricing-name">Starter</div>
+                    <div class="price">₦150k</div>
+                    <p class="pricing-desc">Try it out yourself</p>
+                    <ul class="pricing-features">
+                        <li>All 4 portals included</li>
+                        <li>Complete setup guide</li>
+                        <li>Full documentation</li>
+                        <li>30-day support</li>
+                    </ul>
+                    <a href="https://instagram.com/he.knocks_threes" class="btn btn-ghost" style="width:100%;justify-content:center" target="_blank">Get Started</a>
+                </div>
+                <div class="pricing-card featured">
+                    <div class="pricing-badge">⭐ Best Value</div>
+                    <div class="pricing-name">Professional</div>
+                    <div class="price">₦300k</div>
+                    <p class="pricing-desc">We handle everything</p>
+                    <ul class="pricing-features">
+                        <li>Everything in Starter</li>
+                        <li>We set up completely</li>
+                        <li>Custom domain</li>
+                        <li>Expiry tracking</li>
+                        <li>4-hour staff training</li>
+                        <li>90-day support</li>
+                    </ul>
+                    <a href="https://instagram.com/he.knocks_threes" class="btn btn-primary" style="width:100%;justify-content:center" target="_blank">Get Started</a>
+                </div>
+                <div class="pricing-card">
+                    <div class="pricing-name">Enterprise</div>
+                    <div class="price">₦600k</div>
+                    <p class="pricing-desc">Serious operations</p>
+                    <ul class="pricing-features">
+                        <li>Everything in Professional</li>
+                        <li>WhatsApp order alerts</li>
+                        <li>Email notifications</li>
+                        <li>Custom features built</li>
+                        <li>On-site setup & install</li>
+                        <li>6-month support</li>
+                    </ul>
+                    <a href="https://instagram.com/he.knocks_threes" class="btn btn-ghost" style="width:100%;justify-content:center" target="_blank">Get Started</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── CTA ── -->
+    <section class="cta-section" id="contact">
+        <div class="container">
+            <h2>Stop Losing <span class="accent-text">Money Today</span></h2>
+            <p>Free 15-minute demo. See your store running on this system before you pay a single naira.</p>
+            <div class="cta-group">
+                <a href="https://instagram.com/he.knocks_threes" class="btn btn-primary" target="_blank">Book Free Demo</a>
+                <a href="mailto:grandpasdream@gmail.com" class="btn btn-ghost">Email Us</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── FOOTER ── -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-top">
+                <div class="footer-brand">
+                    <div class="logo-wordmark" style="font-size:20px">Grandpa's <span style="color:var(--accent)">Dream</span></div>
+                    <p>A complete supermarket operating system built for Nigerian businesses. Automate everything, lose nothing.</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Product</h4>
+                    <a href="#how-it-works">How It Works</a>
+                    <a href="#pricing">Pricing</a>
+                    <a href="https://grandpas-dream-supermarket.vercel.app" target="_blank">Live Demo</a>
+                </div>
+                <div class="footer-section">
+                    <h4>Support</h4>
+                    <a href="#">30-Day Guarantee</a>
+                    <a href="#">Documentation</a>
+                </div>
+                <div class="footer-section">
+                    <h4>Contact</h4>
+                    <a href="mailto:grandpasdream@gmail.com">grandpasdream@gmail.com</a>
+                    <a href="https://instagram.com/he.knocks_threes" target="_blank">@he.knocks_threes</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>© 2026 Grandpa's Dream. Save ₦118k monthly.</p>
+                <span class="footer-flag">Made in Nigeria 🇳🇬</span>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // ── MODAL ──
+        function openModal(t) {
+            document.getElementById('modal-' + t).classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+        function closeModal() {
+            document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
+            document.body.style.overflow = 'auto';
+        }
+        document.querySelectorAll('.modal').forEach(m => {
+            m.addEventListener('click', e => { if (e.target === m) closeModal(); });
+        });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+        // ── CAROUSEL ──
+        const carPos = { customer: 0, staff: 0, driver: 0, manager: 0 };
+        const carTotal = { customer: 2, staff: 2, driver: 2, manager: 2 };
+
+        function moveCar(id, dir) {
+            carPos[id] = (carPos[id] + dir + carTotal[id]) % carTotal[id];
+            updateCar(id);
+        }
+        function setCar(id, idx) {
+            carPos[id] = idx;
+            updateCar(id);
+        }
+        function updateCar(id) {
+            document.getElementById('car-' + id).style.transform = `translateX(-${carPos[id] * 100}%)`;
+            document.querySelectorAll(`#dots-${id} .car-dot`).forEach((d, i) => {
+                d.classList.toggle('active', i === carPos[id]);
+            });
+        }
+    </script>
+</body>
+</html>

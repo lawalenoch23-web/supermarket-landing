@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://lawalenoch23-web.github.io/supermarket-landing/sitemap.xml

@@ -2,7 +2,7 @@
 // SETTINGS COMPONENT FOR MANAGER.TSX
 // Add this as a separate component or integrate into Manager
 // ============================================
-
+import BrandingSettings from './BrandingSettings';
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { Save, Key, AlertCircle } from 'lucide-react';
@@ -200,7 +200,10 @@ export function SettingsTab({ onSettingsSaved }: SettingsProps) {
             placeholder="+234 800 000 0000"
           />
         </div>
-
+        {/* NEW: Branding Settings Section */}
+        <div className="mt-6">
+          <BrandingSettings onSaved={onSettingsSaved} />
+        </div>
         {/* Warning */}
         <div className="bg-orange-500/10 border border-orange-500/30 p-4 rounded-xl">
           <div className="flex items-start gap-3">

@@ -1,9 +1,9 @@
 import ExpiryBadge from '../components/ExpiryBadge';
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { 
-  Trash2, LayoutDashboard, PlusCircle, 
-  Save, Clock, MapPin, Calendar, PackagePlus, Edit3, DollarSign, ShoppingBag, AlertTriangle, Download, Upload, ChevronUp, X, Filter, Package, Settings, Tag, Percent
+import {
+  Trash2, LayoutDashboard, PlusCircle,
+  Save, Clock, MapPin, Calendar, PackagePlus, Edit3, DollarSign, ShoppingBag, AlertTriangle, Download, Upload, ChevronUp, X, Filter, Package, Settings, Tag, Percent, CheckCircle, TrendingUp, ChevronDown, BarChart2
 } from 'lucide-react';
 import SettingsTab from '../components/SettingsTab';
 
@@ -27,28 +27,16 @@ const WhatsAppIcon = ({ size = 16, className = '' }: { size?: number; className?
   </svg>
 );
 
-// ✅ Shared date/time formatter
 const formatOrderDateTime = (isoString: string): string => {
   if (!isoString) return '—';
   const d = new Date(isoString);
   return d.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
   });
 };
 
 export default function Manager() {
-  // --- 0. AUTHENTICATION STATE ---
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [passwordInput, setPasswordInput] = useState('');
-  const [loginError, setLoginError] = useState('');
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-
-  // --- 1. STATE ---
   const [activeTab, setActiveTab] = useState<'dashboard' | 'settings' | 'payments'>('dashboard');
   const [orders, setOrders] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -64,32 +52,29 @@ export default function Manager() {
   const [showAddresses, setShowAddresses] = useState(false);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [dateFilter, setDateFilter] = useState('ALL_TIME');
-  const [orderTypeFilter, setOrderTypeFilter] = useState<'PICKUP' | 'DELIVERY' | 'ALL'>('PICKUP');
+  const [orderTypeFilter, setOrderTypeFilter] = useState<'PICKUP' | 'DELIVERY' | 'ALL'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('DEFAULT');
   const [showInventory, setShowInventory] = useState(false);
   const [showCategoryBreakdown, setShowCategoryBreakdown] = useState(false);
+  const [showRevenueBreakdown, setShowRevenueBreakdown] = useState(false);
   const [newProduct, setNewProduct] = useState({ name: '', price: '', image_url: '', category: '', stock: '10' });
   const [deliveryFeePerKm, setDeliveryFeePerKm] = useState('150');
   const [isSavingFee, setIsSavingFee] = useState(false);
-
-  // --- SOCIAL MEDIA STATE ---
   const [instagramUrl, setInstagramUrl] = useState('');
   const [whatsappUrl, setWhatsappUrl] = useState('');
   const [twitterUrl, setTwitterUrl] = useState('');
   const [isSavingSocials, setIsSavingSocials] = useState(false);
-
-  // --- DISCOUNT STATE ---
   const [discounts, setDiscounts] = useState<any[]>([]);
   const [newDiscountCode, setNewDiscountCode] = useState('');
   const [newDiscountPercent, setNewDiscountPercent] = useState('');
   const [showAddDiscount, setShowAddDiscount] = useState(false);
-
-  // ✅ Edit Modal State
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [expiringProducts, setExpiringProducts] = useState<any[]>([]);
-  // --- 2. ANALYTICS ---
+  const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
+
+  // ── ORDER FILTERS ──
   const filteredOrders = orders.filter(order => {
     const matchesStatus = filterStatus === 'ALL' || order.status === filterStatus;
     const orderDate = new Date(order.created_at);
@@ -99,30 +84,24 @@ export default function Manager() {
     else if (dateFilter === 'WEEK') matchesDate = (now.getTime() - orderDate.getTime()) <= 7 * 24 * 60 * 60 * 1000;
     else if (dateFilter === 'MONTH') matchesDate = (now.getTime() - orderDate.getTime()) <= 30 * 24 * 60 * 60 * 1000;
     else if (dateFilter === 'YEAR') matchesDate = (now.getTime() - orderDate.getTime()) <= 365 * 24 * 60 * 60 * 1000;
-
     let matchesOrderType = true;
     if (orderTypeFilter === 'PICKUP') matchesOrderType = !order.address || order.address === null;
     else if (orderTypeFilter === 'DELIVERY') matchesOrderType = order.address && order.address !== null;
-
     return matchesStatus && matchesDate && matchesOrderType;
   });
 
-  const totalRevenue = filteredOrders.reduce((sum, order) => sum + (order.total_price || 0), 0);
-
-  // ─── PAYMENT RECONCILIATION CALCULATIONS ───
-  const deliveredUnpaidOrders = orders.filter(o => 
-    o.status === 'DONE' && 
-    o.payment_status === 'unpaid' && 
-    o.address !== null  // Only delivery orders
-  );
-
+  // ── REVENUE CALCULATIONS ──
+  const totalDiscountDeductions = filteredOrders.reduce((sum, o) => sum + (o.discount_amount || 0), 0);
+  const netRevenue = filteredOrders.reduce((sum, o) => sum + (o.total_price || 0), 0);
+  const grossRevenue = netRevenue + totalDiscountDeductions;
+  const totalRevenue = netRevenue;
+  const deliveredUnpaidOrders = orders.filter(o => (o.status === 'DONE' || o.status === 'COMPLETED') && o.payment_status === 'unpaid' && o.address !== null);
   const cashInField = deliveredUnpaidOrders.reduce((sum, order) => sum + (order.total_price || 0), 0);
-
-  // Revenue from PAID orders only
   const paidRevenue = orders.filter(o => o.payment_status === 'paid').reduce((sum, order) => sum + (order.total_price || 0), 0);
-  const totalStockValue = products.reduce((sum, product) => sum + ((product.stock || 0) * (product.price || 0)), 0);
-  const totalStockItems = products.reduce((sum, product) => sum + (product.stock || 0), 0);
 
+  // ── STOCK CALCULATIONS ──
+  const totalStockValue = products.reduce((sum, p) => sum + ((p.stock || 0) * (p.price || 0)), 0);
+  const totalStockItems = products.reduce((sum, p) => sum + (p.stock || 0), 0);
   const stockByCategory = categories.map(category => {
     const categoryProducts = products.filter(p => p.category === category.name);
     const totalValue = categoryProducts.reduce((sum, p) => sum + ((p.stock || 0) * (p.price || 0)), 0);
@@ -130,45 +109,59 @@ export default function Manager() {
     return { name: category.name, totalValue, totalItems, productCount: categoryProducts.length };
   }).sort((a, b) => b.totalValue - a.totalValue);
 
-  // ─── CONFIRM PAYMENT RECEIVED ───
+  const discountRankedProducts = [...products]
+    .filter(p => (p.manual_discount || 0) > 0)
+    .sort((a, b) => (b.manual_discount || 0) - (a.manual_discount || 0))
+    .slice(0, 10);
+
+  const ordersWithDiscount = filteredOrders.filter(o => o.discount_code && o.discount_amount > 0);
+  const promoCodeUsage = ordersWithDiscount.reduce((acc: any, o) => {
+    const code = o.discount_code;
+    if (!acc[code]) acc[code] = { code, uses: 0, totalSaved: 0 };
+    acc[code].uses += 1;
+    acc[code].totalSaved += (o.discount_amount || 0);
+    return acc;
+  }, {});
+  const promoCodeRank = Object.values(promoCodeUsage).sort((a: any, b: any) => b.totalSaved - a.totalSaved) as any[];
+
   const confirmPaymentReceived = async (orderId: number) => {
     if (!confirm('Confirm that payment has been received from the driver?')) return;
-
     try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ payment_status: 'paid' })
-        .eq('id', orderId);
-
+      const { error } = await supabase.from('orders').update({ payment_status: 'paid' }).eq('id', orderId);
       if (error) throw error;
-
-      // Update local state immediately (no reload needed)
-      setOrders(prev => prev.map(o => 
-        o.id === orderId ? { ...o, payment_status: 'paid' } : o
-      ));
-
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, payment_status: 'paid' } : o));
       alert('✅ Payment confirmed and recorded!');
     } catch (err: any) {
       alert('Failed to confirm payment: ' + err.message);
     }
   };
 
-  // --- 3. DATA FETCH ---
   const fetchManagerData = async () => {
     setLoading(true);
     try {
       const { data: oData } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
-      if (oData) setOrders(oData);
-
+      if (oData) {
+        setOrders(oData);
+        // Auto-cancel expired unconfirmed delivery orders
+        const now = Date.now();
+        const expired = oData.filter((o: any) =>
+          o.status === 'AWAITING_CONFIRMATION' &&
+          (now - new Date(o.created_at).getTime()) > 900_000
+        );
+        for (const o of expired) {
+          await supabase.from('orders').update({ status: 'CANCELLED' }).eq('id', o.id);
+        }
+        if (expired.length > 0) {
+          const { data: fresh } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+          if (fresh) setOrders(fresh);
+        }
+      }
       const { data: mData } = await supabase.from('messages').select('*').order('created_at', { ascending: false });
       if (mData) setMsgs(mData);
-
       const { data: cData } = await supabase.from('categories').select('*').order('name', { ascending: true });
       if (cData) setCategories(cData);
-
       const { data: pData } = await supabase.from('products').select('*').order('created_at', { ascending: false });
       if (pData) setProducts(pData);
-
       const { data: sData } = await supabase.from('store_settings').select('*').eq('id', 1).single();
       if (sData) {
         setDeliveryFeePerKm(String(sData.delivery_fee_per_km || 150));
@@ -176,7 +169,6 @@ export default function Manager() {
         setWhatsappUrl(sData.whatsapp_url || '');
         setTwitterUrl(sData.twitter_url || '');
       }
-
       const { data: dData } = await supabase.from('discounts').select('*').order('created_at', { ascending: false });
       if (dData) setDiscounts(dData);
     } catch (err) {
@@ -184,122 +176,57 @@ export default function Manager() {
     } finally {
       setLoading(false);
     }
+    
   };
 
   useEffect(() => {
     const fetchExpiringProducts = async () => {
-      const today = new Date().toISOString().split('T')[0];
       const futureDate = new Date();
       futureDate.setDate(futureDate.getDate() + 14);
       const future = futureDate.toISOString().split('T')[0];
-
-      const { data } = await supabase
-        .from('products')
-        .select('*')
-        .not('expiry_date', 'is', null)
-        .lte('expiry_date', future)
-        .order('expiry_date', { ascending: true });
-
+      const { data } = await supabase.from('products').select('*').not('expiry_date', 'is', null).lte('expiry_date', future).order('expiry_date', { ascending: true });
       setExpiringProducts(data || []);
     };
-
     fetchExpiringProducts();
   }, []);
 
-
-  
-  // --- CHECK AUTHENTICATION ON MOUNT ---
   useEffect(() => {
-    const session = localStorage.getItem('manager_session');
-    const sessionTime = localStorage.getItem('manager_session_time');
-    if (session && sessionTime) {
-      const now = new Date().getTime();
-      const sessionAge = now - parseInt(sessionTime);
-      if (sessionAge < 24 * 60 * 60 * 1000) {
-        setIsAuthenticated(true);
-      } else {
-        localStorage.removeItem('manager_session');
-        localStorage.removeItem('manager_session_time');
-      }
-    }
+    fetchManagerData();
+    const channel = supabase.channel('manager-stable-view')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchManagerData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchManagerData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchManagerData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'discounts' }, fetchManagerData)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, []);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchManagerData();
-      const channel = supabase.channel('manager-stable-view')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchManagerData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchManagerData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchManagerData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'discounts' }, fetchManagerData)
-        .subscribe();
-      return () => { supabase.removeChannel(channel); };
-    }
-  }, [isAuthenticated]);
-
-  // --- AUTHENTICATION HANDLERS ---
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoggingIn(true);
-    setLoginError('');
-    try {
-      const { data: settingsData } = await supabase.from('store_settings').select('manager_password').eq('id', 1).single();
-      const dbPassword = settingsData?.manager_password;
-      const masterKey = import.meta.env.VITE_MASTER_RECOVERY_KEY;
-      setTimeout(() => {
-        if (passwordInput === dbPassword || passwordInput === masterKey) {
-          localStorage.setItem('manager_session', 'authenticated');
-          localStorage.setItem('manager_session_time', new Date().getTime().toString());
-          setIsAuthenticated(true);
-          setPasswordInput('');
-        } else {
-          setLoginError('Incorrect password. Please try again.');
-          setPasswordInput('');
-        }
-        setIsLoggingIn(false);
-      }, 500);
-    } catch (error) {
-      setLoginError('Login failed. Please try again.');
-      setIsLoggingIn(false);
-    }
-  };
 
   const handleLogout = () => {
     if (confirm('Are you sure you want to logout?')) {
       localStorage.removeItem('manager_session');
       localStorage.removeItem('manager_session_time');
-      setIsAuthenticated(false);
+      window.location.href = '/login';
     }
   };
 
-  // ✅ FIXED: Pure UPDATE only — row 1 always exists after running the SQL migration
   const handleSaveSocials = async () => {
     setIsSavingSocials(true);
     try {
-      const { error } = await supabase
-        .from('store_settings')
-        .update({
-          instagram_url: instagramUrl.trim() || null,
-          whatsapp_url: whatsappUrl.trim() || null,
-          twitter_url: twitterUrl.trim() || null,
-        })
-        .eq('id', 1);
-
-      if (error) {
-        console.error('Supabase error:', JSON.stringify(error, null, 2));
-        throw new Error(error.message || error.code || JSON.stringify(error));
-      }
-      alert('✅ Social media links saved! They will appear in the store header.');
+      const { error } = await supabase.from('store_settings').update({
+        instagram_url: instagramUrl.trim() || null,
+        whatsapp_url: whatsappUrl.trim() || null,
+        twitter_url: twitterUrl.trim() || null,
+      }).eq('id', 1);
+      if (error) throw new Error(error.message || JSON.stringify(error));
+      alert('✅ Social media links saved!');
       fetchManagerData();
     } catch (err: any) {
-      console.error('Social save error:', err);
       alert('❌ Failed to save social links: ' + (err?.message || JSON.stringify(err)));
     } finally {
       setIsSavingSocials(false);
     }
   };
 
-  // --- DISCOUNT HANDLERS ---
   const handleAddDiscount = async () => {
     if (!newDiscountCode.trim() || !newDiscountPercent) { alert('Please fill in all fields'); return; }
     const percent = parseFloat(newDiscountPercent);
@@ -307,11 +234,8 @@ export default function Manager() {
     try {
       const { error } = await supabase.from('discounts').insert([{ code_name: newDiscountCode.toUpperCase(), percentage_off: percent, is_active: true }]);
       if (error) throw error;
-      setNewDiscountCode('');
-      setNewDiscountPercent('');
-      setShowAddDiscount(false);
-      alert('✅ Discount code added!');
-      fetchManagerData();
+      setNewDiscountCode(''); setNewDiscountPercent(''); setShowAddDiscount(false);
+      alert('✅ Discount code added!'); fetchManagerData();
     } catch (err: any) {
       if (err.code === '23505') alert('❌ This discount code already exists');
       else alert('❌ Failed to add discount: ' + err.message);
@@ -347,14 +271,10 @@ export default function Manager() {
     alert("Image uploaded successfully!");
   };
 
-  // ✅ FIXED: Pure UPDATE only — row 1 always exists
   const handleUpdateDeliveryFee = async () => {
     setIsSavingFee(true);
     try {
-      const { error } = await supabase
-        .from('store_settings')
-        .update({ delivery_fee_per_km: parseFloat(deliveryFeePerKm) })
-        .eq('id', 1);
+      const { error } = await supabase.from('store_settings').update({ delivery_fee_per_km: parseFloat(deliveryFeePerKm) }).eq('id', 1);
       if (error) throw new Error(error.message);
       alert('✅ Delivery fee updated successfully!');
     } catch (err: any) {
@@ -364,7 +284,6 @@ export default function Manager() {
     }
   };
 
-  // --- 4. ACTIONS ---
   const handleAddCategory = async () => {
     if (!newCategoryName) return;
     const { error } = await supabase.from('categories').insert([{ name: newCategoryName.toUpperCase() }]);
@@ -381,23 +300,25 @@ export default function Manager() {
   const handleAddProduct = async () => {
     if (!newName || !newPrice || !newCategory) { alert("Please fill in all fields"); return; }
     const { error } = await supabase.from('products').insert([{
-      name: newName.toUpperCase(),
-      price: parseFloat(newPrice),
-      category: newCategory,
-      image: newProduct.image_url,
-      stock: parseInt(newStock) || 10
+      name: newName.toUpperCase(), price: parseFloat(newPrice), category: newCategory,
+      image: newProduct.image_url, stock: parseInt(newStock) || 10
     }]);
     if (error) { alert("Upload failed: " + error.message); }
     else {
       setNewName(''); setNewPrice(''); setNewCategory(''); setNewStock('10');
       setNewProduct({ name: '', price: '', image_url: '', category: '', stock: '10' });
-      alert("Product added successfully!");
-      fetchManagerData();
+      alert("Product added successfully!"); fetchManagerData();
     }
   };
 
   const openEditModal = (product: any) => {
-    setEditingProduct({ id: product.id, name: product.name, price: String(product.price), stock: String(product.stock || 0), category: product.category, image_url: product.image || product.image_url || '' });
+    setEditingProduct({
+      id: product.id, name: product.name, price: String(product.price),
+      stock: String(product.stock || 0), category: product.category,
+      image_url: product.image || product.image_url || '',
+      expiry_date: product.expiry_date || '',
+      manual_discount: String(product.manual_discount || 0),
+    });
     setShowEditModal(true);
   };
 
@@ -412,15 +333,20 @@ export default function Manager() {
     const stockValue = parseInt(editingProduct.stock);
     if (isNaN(priceValue) || priceValue < 0) { alert("Please enter a valid price"); return; }
     if (isNaN(stockValue) || stockValue < 0) { alert("Please enter a valid stock quantity"); return; }
-
     try {
-      const { data, error } = await supabase.from('products')
-        .update({ name: editingProduct.name.toUpperCase(), price: priceValue, stock: stockValue, category: editingProduct.category, image: editingProduct.image_url })
-        .eq('id', editingProduct.id).select().single();
-
+      const { error } = await supabase.from('products')
+        .update({
+          name: editingProduct.name.toUpperCase(),
+          price: priceValue,
+          stock: stockValue,
+          category: editingProduct.category,
+          image: editingProduct.image_url,
+          expiry_date: editingProduct.expiry_date || null,
+          manual_discount: parseInt(editingProduct.manual_discount) || 0,
+          on_sale: (parseInt(editingProduct.manual_discount) || 0) > 0
+        })
+        .eq('id', editingProduct.id);
       if (error) { alert("Update failed: " + error.message); return; }
-
-      setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, name: editingProduct.name.toUpperCase(), price: priceValue, stock: stockValue, category: editingProduct.category, image: editingProduct.image_url } : p));
       alert("✅ Product updated successfully!");
       setShowEditModal(false);
       setEditingProduct(null);
@@ -438,9 +364,45 @@ export default function Manager() {
     else { alert("Product deleted successfully!"); fetchManagerData(); }
   };
 
+  const inventoryFilteredProducts = products
+    .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    .sort((a, b) => {
+      if (sortBy === 'PRICE_LOW') return a.price - b.price;
+      if (sortBy === 'PRICE_HIGH') return b.price - a.price;
+      if (sortBy === 'STOCK_LOW') return (a.stock || 0) - (b.stock || 0);
+      if (sortBy === 'CATEGORY') return (a.category || '').localeCompare(b.category || '');
+      return 0;
+    });
+
+  const toggleSelectProduct = (id: number) => {
+    setSelectedProducts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedProducts.length === inventoryFilteredProducts.length) setSelectedProducts([]);
+    else setSelectedProducts(inventoryFilteredProducts.map(p => p.id));
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedProducts.length === 0) return;
+    if (!confirm(`Delete ${selectedProducts.length} product(s)? This cannot be undone.`)) return;
+    try {
+      for (const id of selectedProducts) await supabase.from('products').delete().eq('id', id);
+      setSelectedProducts([]);
+      fetchManagerData();
+      alert(`✅ ${selectedProducts.length} product(s) deleted!`);
+    } catch (err: any) {
+      alert('Bulk delete failed: ' + err.message);
+    }
+  };
+
   const updateStatus = async (orderId: number, newStatus: string) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
     const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
-    if (!error) fetchManagerData();
+    if (error) {
+      fetchManagerData();
+      alert('Failed to update status');
+    }
   };
 
   const handleDeleteAllOrders = async () => {
@@ -479,665 +441,850 @@ export default function Manager() {
     if (!dbError) fetchManagerData();
   };
 
-  // --- LOGIN SCREEN ---
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-6 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 via-transparent to-transparent pointer-events-none" />
-        <div className="absolute top-20 left-20 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-orange-500/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="bg-zinc-950/80 backdrop-blur-xl border border-zinc-800 p-12 rounded-3xl shadow-2xl max-w-md w-full relative z-10 animate-in fade-in zoom-in duration-500">
-          <div className="flex justify-center mb-8">
-            <div className="bg-orange-500/10 p-4 rounded-2xl">
-              <LayoutDashboard className="text-orange-500" size={40} />
-            </div>
-          </div>
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-black italic uppercase tracking-tighter text-white mb-2">Manager Access</h1>
-            <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Authorized Personnel Only</p>
-          </div>
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div>
-              <label className="text-xs font-black text-zinc-500 uppercase tracking-wider mb-2 block">Password</label>
-              <input type="password" value={passwordInput} onChange={(e) => { setPasswordInput(e.target.value); setLoginError(''); }} placeholder="Enter manager password" className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-4 text-sm font-medium text-white placeholder:text-zinc-600 outline-none focus:border-orange-500 transition-all" disabled={isLoggingIn} autoFocus />
-            </div>
-            {loginError && <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3"><p className="text-red-500 text-xs font-bold text-center">{loginError}</p></div>}
-            <button type="submit" disabled={!passwordInput || isLoggingIn} className="w-full bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 disabled:cursor-not-allowed text-white py-4 rounded-xl font-black uppercase text-sm tracking-widest transition-all active:scale-95">
-              {isLoggingIn ? <div className="flex items-center justify-center gap-2"><div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /><span>Verifying...</span></div> : 'Access Dashboard'}
-            </button>
-          </form>
-          <div className="mt-8 pt-6 border-t border-zinc-800">
-            <p className="text-center text-zinc-600 text-[9px] font-medium uppercase tracking-widest">Secure Manager Portal</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  // ────────────────────────────────────────────────
+  //  MAIN DASHBOARD
+  // ────────────────────────────────────────────────
   return (
     <>
       <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #18181b; border-radius: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #f97316; }
+        .mgr-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
+        .mgr-scroll::-webkit-scrollbar-track { background: transparent; }
+        .mgr-scroll::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 99px; }
+        .mgr-scroll::-webkit-scrollbar-thumb:hover { background: #f97316; }
       `}</style>
 
-      <div className="min-h-screen bg-black text-white p-4 md:p-6 lg:p-8 font-sans">
-        <div className="max-w-7xl mx-auto">
-          {/* HEADER */}
-          <header className="mb-8 border-b border-zinc-900 pb-6">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+      <div className="min-h-screen bg-[#080808] text-white font-sans">
+
+        {/* ── TOP HEADER ── */}
+        <header className="sticky top-0 z-40 bg-[#080808]/95 backdrop-blur-xl border-b border-zinc-900">
+          <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
               <div className="flex items-center gap-3">
-                <LayoutDashboard className="text-orange-500" size={28} />
-                <h1 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter">Inventory & Sales</h1>
+                <div className="w-8 h-8 rounded-lg bg-orange-500/15 border border-orange-500/25 flex items-center justify-center">
+                  <LayoutDashboard size={16} className="text-orange-500" />
+                </div>
+                <div>
+                  <h1 className="text-sm font-black uppercase tracking-tight text-white leading-none">Manager OS</h1>
+                  <p className="text-[9px] text-zinc-600 font-semibold uppercase tracking-wider">Dashboard</p>
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button onClick={() => setShowAddresses(!showAddresses)} className={`px-3 py-2 rounded-xl text-xs font-black uppercase transition-all ${showAddresses ? 'bg-orange-500 text-black' : 'bg-zinc-900 text-zinc-500 hover:bg-zinc-800'}`}>
-                  {showAddresses ? 'Hide Addresses' : 'Show Addresses'}
+
+              {/* Tabs */}
+              <div className="hidden md:flex items-center gap-1 bg-zinc-950 border border-zinc-800 rounded-xl p-1">
+                {[
+                  { id: 'dashboard', label: '📊 Dashboard' },
+                  { id: 'payments', label: '💰 Payments' },
+                  { id: 'settings', label: '⚙️ Settings' },
+                ].map(tab => (
+                  <button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
+                    className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wide transition-all ${activeTab === tab.id ? 'bg-orange-600 text-white shadow-lg shadow-orange-500/20' : 'text-zinc-500 hover:text-white'}`}>
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2">
+                <button onClick={exportCSV} title="Export CSV"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-white transition-all">
+                  <Download size={14} />
                 </button>
-                <button onClick={handleDeleteAllOrders} className="flex items-center gap-2 bg-red-900/20 text-red-500 px-3 py-2 rounded-xl text-xs font-bold uppercase hover:bg-red-600 hover:text-white transition-all">
-                  <AlertTriangle size={12} /> Clear Orders
-                </button>
-                <button onClick={handleClearMessages} className="flex items-center gap-2 bg-zinc-900 text-zinc-400 px-3 py-2 rounded-xl text-xs font-bold uppercase hover:bg-orange-500 hover:text-white transition-all">
-                  <Trash2 size={12} /> Clear Messages
-                </button>
-                <button onClick={exportCSV} className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-xl text-xs font-black uppercase hover:bg-white hover:text-black transition-all">
-                  <Download size={12} /> Export CSV
-                </button>
-                <button onClick={handleLogout} className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-xl text-xs font-black uppercase hover:bg-red-600 hover:border-red-600 hover:text-white transition-all">
+                <button onClick={handleLogout}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-red-600/20 border border-zinc-800 hover:border-red-500/30 text-zinc-400 hover:text-red-400 rounded-lg text-xs font-black uppercase transition-all">
                   <X size={12} /> Logout
                 </button>
               </div>
             </div>
 
-            {/* TAB NAVIGATION */}
-            {/* EXPIRING PRODUCTS ALERT */}
-            {expiringProducts.length > 0 && (
-              <div className="bg-gradient-to-br from-red-50 to-orange-50 rounded-2xl shadow-xl p-6 mb-6 border border-red-200">
-                <h2 className="text-2xl font-black mb-4 flex items-center gap-3 text-red-900">
-                  <AlertTriangle className="text-red-600" size={28} />
-                  Expiring Products Alert
-                  <span className="bg-red-600 text-white px-3 py-1 rounded-full text-sm font-black">
-                    {expiringProducts.length} items
-                  </span>
-                </h2>
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {expiringProducts.map((product) => (
-                    <div key={product.id} className="flex items-center justify-between p-4 bg-white rounded-xl hover:shadow-md transition-all border border-red-100">
-                      <div>
-                        <p className="font-black text-gray-900 text-lg">{product.name}</p>
-                        <p className="text-sm text-gray-600 mt-1">
-                          📦 Stock: {product.stock} units | 📅 Expires: {new Date(product.expiry_date).toLocaleDateString()}
-                        </p>
+            {/* Mobile tabs */}
+            <div className="md:hidden flex gap-1 pb-3 overflow-x-auto no-scrollbar">
+              {[
+                { id: 'dashboard', label: '📊 Dashboard' },
+                { id: 'payments', label: '💰 Payments' },
+                { id: 'settings', label: '⚙️ Settings' },
+              ].map(tab => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
+                  className={`flex-shrink-0 px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide transition-all ${activeTab === tab.id ? 'bg-orange-600 text-white' : 'bg-zinc-900 text-zinc-500'}`}>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </header>
+
+        <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6">
+
+          {/* ── EXPIRY ALERT ── */}
+          {expiringProducts.length > 0 && (
+            <div className="bg-red-500/8 border border-red-500/20 rounded-2xl p-4 mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle size={16} className="text-red-500 flex-shrink-0" />
+                <h3 className="text-sm font-black uppercase text-red-400">
+                  {expiringProducts.length} Product{expiringProducts.length > 1 ? 's' : ''} Expiring Soon
+                </h3>
+              </div>
+              <div className="space-y-2 max-h-40 overflow-y-auto mgr-scroll">
+                {expiringProducts.map(product => (
+                  <div key={product.id} className="flex items-center justify-between bg-black/30 rounded-xl px-3 py-2">
+                    <div>
+                      <p className="text-sm font-bold text-white">{product.name}</p>
+                      <p className="text-xs text-zinc-500">Stock: {product.stock} · Expires {new Date(product.expiry_date).toLocaleDateString()}</p>
+                    </div>
+                    <ExpiryBadge expiryDate={product.expiry_date} />
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-zinc-600 mt-3 italic">💡 Discount expiring items to reduce waste</p>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════ */}
+          {/*  PAYMENTS TAB                          */}
+          {/* ══════════════════════════════════════ */}
+          {activeTab === 'payments' && (
+            <div className="space-y-5">
+              <div className="bg-orange-500/8 border border-orange-500/20 rounded-2xl p-6">
+                <p className="text-xs font-black uppercase text-orange-400 mb-1">Cash in Field</p>
+                <p className="text-4xl font-black text-orange-500">₦{cashInField.toLocaleString()}</p>
+                <p className="text-xs text-zinc-500 mt-1">{deliveredUnpaidOrders.length} delivered order{deliveredUnpaidOrders.length !== 1 ? 's' : ''} awaiting collection</p>
+              </div>
+
+              <div className="bg-zinc-950 border border-zinc-900 rounded-2xl overflow-hidden">
+                <div className="p-4 border-b border-zinc-900">
+                  <h2 className="text-sm font-black uppercase text-white flex items-center gap-2">
+                    <AlertTriangle size={14} className="text-orange-500" /> Awaiting Payment Confirmation
+                  </h2>
+                </div>
+                {deliveredUnpaidOrders.length === 0 ? (
+                  <div className="p-16 text-center">
+                    <CheckCircle size={40} className="text-green-500 mx-auto mb-3" />
+                    <p className="text-sm font-black uppercase text-zinc-600">All Payments Collected!</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-zinc-900">
+                    {deliveredUnpaidOrders.map(order => (
+                      <div key={order.id} className="p-5 hover:bg-white/[0.02] transition-colors">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-base font-black text-orange-500">Order #{order.id}</span>
+                              <span className="px-2 py-0.5 bg-orange-500/15 text-orange-400 text-[9px] font-black uppercase rounded-full">Unpaid</span>
+                            </div>
+                            <p className="text-sm font-bold text-white">{order.customer_name}</p>
+                            <p className="text-xs text-zinc-500 mt-0.5">{order.phone_number} · {formatOrderDateTime(order.created_at)}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl font-black text-orange-500">₦{(order.total_price || 0).toLocaleString()}</span>
+                            <button onClick={() => confirmPaymentReceived(order.id)}
+                              className="px-4 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl font-black uppercase text-xs tracking-wide transition-all active:scale-95 flex items-center gap-1.5">
+                              <CheckCircle size={13} /> Confirm
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <ExpiryBadge expiryDate={product.expiry_date} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════ */}
+          {/*  SETTINGS TAB                          */}
+          {/* ══════════════════════════════════════ */}
+          {activeTab === 'settings' && (
+            <div className="space-y-5">
+              <SettingsTab onSettingsSaved={fetchManagerData} />
+
+              {/* Delivery Fee */}
+              <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-5">
+                <h3 className="text-xs font-black uppercase text-orange-500 mb-4 flex items-center gap-2"><DollarSign size={12} /> Delivery Fee</h3>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="text-[10px] font-black text-zinc-500 uppercase mb-2 block">Fee Per Kilometer (₦)</label>
+                    <input type="number" value={deliveryFeePerKm} onChange={(e) => setDeliveryFeePerKm(e.target.value)}
+                      className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-black outline-none focus:border-orange-500 transition-all" />
+                  </div>
+                  <button onClick={handleUpdateDeliveryFee} disabled={isSavingFee}
+                    className="bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 text-white px-5 rounded-xl text-xs font-black uppercase transition-all self-end py-3">
+                    {isSavingFee ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+                <p className="text-xs text-zinc-600 mt-2 italic">Shown to customers at checkout. Actual fee calculated on delivery.</p>
+              </div>
+
+              {/* Socials */}
+              <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-5">
+                <h3 className="text-xs font-black uppercase text-orange-500 mb-1 flex items-center gap-2"><Settings size={12} /> Social Media</h3>
+                <p className="text-xs text-zinc-500 mb-4">Icons shown in the customer store header.</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                  {[
+                    { label: 'Instagram', icon: <InstagramIcon size={11} className="text-pink-500" />, value: instagramUrl, setter: setInstagramUrl, placeholder: 'https://instagram.com/yourstore', focus: 'focus:border-pink-500' },
+                    { label: 'WhatsApp', icon: <WhatsAppIcon size={11} className="text-green-500" />, value: whatsappUrl, setter: setWhatsappUrl, placeholder: 'https://wa.me/234XXXXXXXXXX', focus: 'focus:border-green-500' },
+                    { label: 'Twitter / X', icon: <TwitterXIcon size={11} className="text-sky-400" />, value: twitterUrl, setter: setTwitterUrl, placeholder: 'https://twitter.com/yourstore', focus: 'focus:border-sky-500' },
+                  ].map(s => (
+                    <div key={s.label}>
+                      <label className="text-[10px] font-black text-zinc-500 uppercase mb-2 flex items-center gap-1.5">{s.icon} {s.label}</label>
+                      <input type="url" value={s.value} onChange={(e) => s.setter(e.target.value)} placeholder={s.placeholder}
+                        className={`w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-medium outline-none ${s.focus} transition-all`} />
                     </div>
                   ))}
                 </div>
-                <div className="mt-4 p-4 bg-yellow-100 rounded-xl border border-yellow-300">
-                  <p className="text-sm text-gray-800 font-semibold">
-                    💡 <strong>Tip:</strong> Discount products expiring soon (20-50% off) to sell them faster and reduce waste!
-                  </p>
-                </div>
+                <button onClick={handleSaveSocials} disabled={isSavingSocials}
+                  className="w-full bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 text-white py-3 rounded-xl text-xs font-black uppercase transition-all flex items-center justify-center gap-2">
+                  {isSavingSocials ? <><div className="animate-spin h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full" /> Saving...</> : '💾 Save Social Links'}
+                </button>
               </div>
-            )}
-            <div className="flex gap-2 mb-6 border-b border-zinc-900">
-              <button onClick={() => setActiveTab('dashboard')} className={`px-6 py-3 rounded-t-xl text-sm font-black uppercase transition-all ${activeTab === 'dashboard' ? 'bg-zinc-950 border border-b-0 border-zinc-900 text-white' : 'text-zinc-600 hover:text-zinc-400'}`}>📊 Dashboard</button>
-              <button onClick={() => setActiveTab('payments')} className={`px-6 py-3 rounded-t-xl text-sm font-black uppercase transition-all ${activeTab === 'payments' ? 'bg-zinc-950 border border-b-0 border-zinc-900 text-white' : 'text-zinc-600 hover:text-zinc-400'}`}>💰 Payments</button>
-              <button onClick={() => setActiveTab('settings')} className={`px-6 py-3 rounded-t-xl text-sm font-black uppercase transition-all ${activeTab === 'settings' ? 'bg-zinc-950 border border-b-0 border-zinc-900 text-white' : 'text-zinc-600 hover:text-zinc-400'}`}>⚙️ Settings</button>
-            </div>
-            {/* ===================== PAYMENTS TAB ===================== */}
-            {activeTab === 'payments' ? (
-              <div className="space-y-6">
-                {/* CASH IN FIELD METRIC */}
-                <div className="bg-gradient-to-br from-orange-500/10 to-red-500/10 border-2 border-orange-500/30 p-6 md:p-8 rounded-2xl">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div>
-                      <p className="text-xs font-black uppercase text-orange-400 mb-2">💵 Cash Currently in Field</p>
-                      <p className="text-4xl md:text-5xl font-black text-orange-500">₦{cashInField.toLocaleString()}</p>
-                      <p className="text-xs text-zinc-400 mt-2">
-                        From {deliveredUnpaidOrders.length} delivered order{deliveredUnpaidOrders.length !== 1 ? 's' : ''} awaiting collection
-                      </p>
-                    </div>
-                    <div className="bg-orange-500/20 p-4 rounded-xl">
-                      <svg className="w-16 h-16 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
+
+              {/* Discount Codes */}
+              <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-xs font-black uppercase text-orange-500 flex items-center gap-2"><Tag size={12} /> Discount Codes</h3>
+                    <p className="text-xs text-zinc-600 mt-0.5">Promo codes for customers at checkout</p>
                   </div>
-                </div>
-
-                {/* UNPAID ORDERS LIST */}
-                <div className="bg-zinc-950 border border-zinc-900 rounded-2xl overflow-hidden">
-                  <div className="p-5 border-b border-zinc-900 bg-zinc-900/20">
-                    <h2 className="text-sm font-black uppercase flex items-center gap-2">
-                      <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      Awaiting Payment Confirmation
-                    </h2>
-                  </div>
-
-                  {deliveredUnpaidOrders.length === 0 ? (
-                    <div className="p-16 text-center">
-                      <svg className="w-16 h-16 text-green-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <p className="text-sm font-black uppercase text-zinc-600">All Payments Collected!</p>
-                      <p className="text-xs text-zinc-700 mt-2">No outstanding cash to reconcile</p>
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-zinc-900">
-                      {deliveredUnpaidOrders.map(order => (
-                        <div key={order.id} className="p-5 hover:bg-white/[0.02] transition-colors">
-                          <div className="flex flex-col md:flex-row md:items-center gap-4">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-2">
-                                <span className="text-lg font-black text-orange-500">Order #{order.id}</span>
-                                <span className="px-2 py-1 bg-orange-500/20 text-orange-400 text-[10px] font-black uppercase rounded">
-                                  💳 Unpaid
-                                </span>
-                              </div>
-                              <p className="text-sm font-bold text-white mb-1">{order.customer_name}</p>
-                              <p className="text-xs text-zinc-500 flex items-center gap-2">
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                                </svg>
-                                {order.phone_number}
-                              </p>
-                              <p className="text-xs text-zinc-600 mt-1">{formatOrderDateTime(order.created_at)}</p>
-                            </div>
-
-                            <div className="text-right">
-                              <p className="text-2xl md:text-3xl font-black text-orange-500 mb-3">
-                                ₦{(order.total_price || 0).toLocaleString()}
-                              </p>
-                              <button
-                                onClick={() => confirmPaymentReceived(order.id)}
-                                className="w-full md:w-auto px-6 py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl font-black uppercase text-xs tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                Confirm Payment
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : activeTab === 'settings' ? (
-              <div className="space-y-6">
-                {/* ===================== SETTINGS TAB ===================== */}
-                <SettingsTab onSettingsSaved={fetchManagerData} />
-
-                {/* Delivery Fee Settings */}
-                <div className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl">
-                  <h3 className="text-xs font-black uppercase text-orange-500 mb-4 flex items-center gap-2">
-                    <DollarSign size={12} /> Delivery Fee Settings
-                  </h3>
-                  <div className="flex gap-2">
-                    <div className="flex-1">
-                      <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Fee Per Kilometer (₦)</label>
-                      <input type="number" value={deliveryFeePerKm} onChange={(e) => setDeliveryFeePerKm(e.target.value)} placeholder="150" className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-black uppercase outline-none focus:border-orange-500" />
-                    </div>
-                    <button onClick={handleUpdateDeliveryFee} disabled={isSavingFee} className="bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 text-white px-6 rounded-xl text-xs font-black uppercase transition-all self-end py-3">
-                      {isSavingFee ? 'Saving...' : 'Save'}
-                    </button>
-                  </div>
-                  <p className="text-xs text-zinc-600 mt-3 italic">This rate is shown to customers during checkout. Actual fee is calculated on delivery.</p>
-                </div>
-
-                {/* Social Media Links */}
-                <div className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl">
-                  <h3 className="text-xs font-black uppercase text-orange-500 mb-1 flex items-center gap-2">
-                    <Settings size={12} /> Social Media Links
-                  </h3>
-                  <p className="text-xs text-zinc-500 mb-4">These icons appear in the <strong className="text-white">store header navbar</strong> for customers.</p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <label className="text-xs font-bold text-zinc-500 uppercase mb-2 flex items-center gap-2">
-                        <InstagramIcon size={12} className="text-pink-500" /> Instagram URL
-                      </label>
-                      <input type="url" value={instagramUrl} onChange={(e) => setInstagramUrl(e.target.value)} placeholder="https://instagram.com/yourstore" className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-medium outline-none focus:border-pink-500 transition-all" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-zinc-500 uppercase mb-2 flex items-center gap-2">
-                        <WhatsAppIcon size={12} className="text-green-500" /> WhatsApp URL
-                      </label>
-                      <input type="url" value={whatsappUrl} onChange={(e) => setWhatsappUrl(e.target.value)} placeholder="https://wa.me/234XXXXXXXXXX" className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-medium outline-none focus:border-green-500 transition-all" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-zinc-500 uppercase mb-2 flex items-center gap-2">
-                        <TwitterXIcon size={12} className="text-sky-400" /> Twitter / X URL
-                      </label>
-                      <input type="url" value={twitterUrl} onChange={(e) => setTwitterUrl(e.target.value)} placeholder="https://twitter.com/yourstore" className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-medium outline-none focus:border-sky-500 transition-all" />
-                    </div>
-                  </div>
-                  <button onClick={handleSaveSocials} disabled={isSavingSocials} className="w-full bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 text-white py-3 rounded-xl text-xs font-black uppercase transition-all flex items-center justify-center gap-2">
-                    {isSavingSocials ? <><div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /> Saving...</> : '💾 Save Social Links'}
+                  <button onClick={() => setShowAddDiscount(!showAddDiscount)}
+                    className="bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase transition-all flex items-center gap-1.5">
+                    <PlusCircle size={11} /> {showAddDiscount ? 'Cancel' : 'Add Code'}
                   </button>
                 </div>
 
-                {/* Discount Codes */}
-                <div className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-xs font-black uppercase text-orange-500 flex items-center gap-2"><Tag size={12} /> Discount Codes</h3>
-                      <p className="text-xs text-zinc-600 mt-1">Create and manage promo codes for customers</p>
+                {showAddDiscount && (
+                  <div className="bg-purple-500/8 border border-purple-500/20 p-4 rounded-xl mb-4">
+                    <p className="text-xs font-black text-purple-400 uppercase mb-3">New Discount Code</p>
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div>
+                        <label className="text-[10px] font-black text-zinc-500 uppercase mb-2 block">Code</label>
+                        <input type="text" value={newDiscountCode} onChange={(e) => setNewDiscountCode(e.target.value.toUpperCase())}
+                          placeholder="e.g. SAVE20"
+                          className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-black uppercase outline-none focus:border-purple-500 tracking-widest transition-all" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black text-zinc-500 uppercase mb-2 block">% Off</label>
+                        <input type="number" value={newDiscountPercent} onChange={(e) => setNewDiscountPercent(e.target.value)}
+                          placeholder="e.g. 20" min="0" max="100"
+                          className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-black outline-none focus:border-purple-500 transition-all" />
+                      </div>
                     </div>
-                    <button onClick={() => setShowAddDiscount(!showAddDiscount)} className="bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase transition-all flex items-center gap-2">
-                      <PlusCircle size={12} /> {showAddDiscount ? 'Cancel' : 'Add Code'}
+                    <button onClick={handleAddDiscount}
+                      className="w-full bg-purple-600 hover:bg-purple-500 text-white py-3 rounded-xl text-xs font-black uppercase transition-all">
+                      ✨ Create Code
                     </button>
                   </div>
+                )}
 
-                  {showAddDiscount && (
-                    <div className="bg-black/40 border border-purple-500/30 p-4 rounded-xl mb-4 animate-in slide-in-from-top-2 fade-in">
-                      <p className="text-xs font-black text-purple-400 uppercase mb-3">🎉 New Discount Code</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                        <div>
-                          <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Code Name</label>
-                          <input type="text" value={newDiscountCode} onChange={(e) => setNewDiscountCode(e.target.value.toUpperCase())} placeholder="e.g. SAVE20" className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-black uppercase outline-none focus:border-purple-500 tracking-widest" />
-                        </div>
-                        <div>
-                          <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Percentage Off (%)</label>
-                          <input type="number" value={newDiscountPercent} onChange={(e) => setNewDiscountPercent(e.target.value)} placeholder="e.g. 20" min="0" max="100" className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-black uppercase outline-none focus:border-purple-500" />
-                        </div>
-                      </div>
-                      <button onClick={handleAddDiscount} className="w-full bg-purple-600 hover:bg-purple-500 text-white py-3 rounded-xl text-xs font-black uppercase transition-all">✨ Create Discount Code</button>
+                <div className="space-y-2">
+                  {discounts.length === 0 ? (
+                    <div className="text-center py-8 border border-dashed border-zinc-800 rounded-xl">
+                      <Tag size={28} className="text-zinc-800 mx-auto mb-2" />
+                      <p className="text-zinc-600 text-xs font-bold uppercase">No discount codes yet</p>
                     </div>
-                  )}
-
-                  <div className="space-y-2">
-                    {discounts.length === 0 ? (
-                      <div className="text-center py-10 border border-dashed border-zinc-800 rounded-xl">
-                        <Tag size={32} className="text-zinc-800 mx-auto mb-3" />
-                        <p className="text-zinc-600 text-xs font-bold uppercase">No discount codes yet</p>
-                      </div>
-                    ) : (
-                      discounts.map(discount => (
-                        <div key={discount.id} className="bg-black/40 border border-zinc-900 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 group hover:border-purple-500/30 transition-all">
-                          <div className="flex items-center gap-4">
-                            <div className={`px-3 py-2 rounded-lg min-w-[80px] text-center ${discount.is_active ? 'bg-green-600/20 border border-green-600/30 text-green-500' : 'bg-zinc-900 border border-zinc-800 text-zinc-600'}`}>
-                              <p className="text-sm font-black uppercase tracking-wider">{discount.code_name}</p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <div className="flex items-center gap-1">
-                                <Percent size={14} className="text-purple-500" />
-                                <p className="text-2xl font-black text-purple-500">{discount.percentage_off}</p>
-                                <p className="text-xs font-black text-purple-400 mt-1">OFF</p>
-                              </div>
-                              <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full ${discount.is_active ? 'bg-green-600/10 text-green-500 border border-green-600/20' : 'bg-zinc-800 text-zinc-600 border border-zinc-700'}`}>
-                                {discount.is_active ? '● ACTIVE' : '○ INACTIVE'}
+                  ) : (
+                    discounts.map(discount => (
+                      <div key={discount.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-black/40 border border-zinc-900 hover:border-purple-500/20 p-4 rounded-xl transition-all group">
+                        <div className="flex items-center gap-4">
+                          <div className={`px-3 py-2 rounded-lg min-w-[80px] text-center border ${discount.is_active ? 'bg-green-600/15 border-green-600/25 text-green-500' : 'bg-zinc-900 border-zinc-800 text-zinc-600'}`}>
+                            <p className="text-sm font-black uppercase tracking-wider">{discount.code_name}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-2xl font-black text-purple-500">{discount.percentage_off}</p>
+                            <div>
+                              <p className="text-[9px] font-black text-purple-400 uppercase">% OFF</p>
+                              <span className={`text-[9px] font-black uppercase ${discount.is_active ? 'text-green-500' : 'text-zinc-600'}`}>
+                                {discount.is_active ? '● Active' : '○ Inactive'}
                               </span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 sm:ml-auto">
-                            <button onClick={() => handleToggleDiscount(discount.id, discount.is_active)} className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all active:scale-95 ${discount.is_active ? 'bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600 hover:text-white border border-yellow-600/30' : 'bg-green-600/20 text-green-500 hover:bg-green-600 hover:text-white border border-green-600/30'}`}>
-                              {discount.is_active ? 'Deactivate' : 'Activate'}
-                            </button>
-                            <button onClick={() => handleDeleteDiscount(discount.id)} className="text-zinc-600 hover:text-red-500 p-2 transition-colors rounded-lg hover:bg-red-500/10">
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
                         </div>
-                      ))
-                    )}
-                  </div>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => handleToggleDiscount(discount.id, discount.is_active)}
+                            className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all active:scale-95 ${discount.is_active ? 'bg-yellow-600/15 text-yellow-500 hover:bg-yellow-600 hover:text-white border border-yellow-600/25' : 'bg-green-600/15 text-green-500 hover:bg-green-600 hover:text-white border border-green-600/25'}`}>
+                            {discount.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button onClick={() => handleDeleteDiscount(discount.id)}
+                            className="p-2 text-zinc-700 hover:text-red-500 transition-colors rounded-lg hover:bg-red-500/8">
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
-            ) : (
-              <>
-                {/* FILTERS */}
-                <div className="bg-zinc-950/50 border border-zinc-900 rounded-2xl p-3 md:p-4 mb-6">
-                  <div className="mb-3 md:mb-4 pb-3 md:pb-4 border-b border-zinc-800/50">
-                    <div className="flex items-center gap-2 mb-2 md:mb-3">
-                      <Filter size={12} className="text-orange-500" />
-                      <span className="text-[9px] md:text-[10px] font-black text-zinc-600 uppercase tracking-wider">Order Type</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {['PICKUP', 'DELIVERY', 'ALL'].map((type) => (
-                        <button key={type} onClick={() => setOrderTypeFilter(type as any)} className={`py-2.5 md:py-3 rounded-xl text-[10px] md:text-xs font-black transition-all active:scale-95 ${orderTypeFilter === type ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/20' : 'bg-zinc-900/50 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-400'}`}>
-                          <span className="hidden sm:inline">{type === 'PICKUP' ? '📦 PICKUP' : type === 'DELIVERY' ? '🚚 DELIVERY' : '🔍 ALL'}</span>
-                          <span className="sm:hidden">{type === 'PICKUP' ? '📦' : type === 'DELIVERY' ? '🚚' : '🔍'}</span>
+
+              {/* Danger Zone */}
+              <div className="bg-red-500/5 border border-red-500/15 rounded-2xl p-5">
+                <h3 className="text-xs font-black uppercase text-red-500 mb-3 flex items-center gap-2"><AlertTriangle size={12} /> Danger Zone</h3>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={handleDeleteAllOrders}
+                    className="px-4 py-2 bg-red-600/15 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/25 rounded-xl text-xs font-black uppercase transition-all">
+                    Clear All Orders
+                  </button>
+                  <button onClick={handleClearMessages}
+                    className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-white border border-zinc-800 rounded-xl text-xs font-black uppercase transition-all">
+                    Clear Messages
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════ */}
+          {/*  DASHBOARD TAB                         */}
+          {/* ══════════════════════════════════════ */}
+          {activeTab === 'dashboard' && (
+            <div className="space-y-5">
+
+              {/* ── FILTER BAR ── */}
+              <div className="bg-zinc-950/80 border border-zinc-900 rounded-2xl p-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-[10px] font-black text-zinc-600 uppercase tracking-wider mb-2">Order Type</p>
+                    <div className="flex gap-1">
+                      {['ALL', 'PICKUP', 'DELIVERY'].map(type => (
+                        <button key={type} onClick={() => setOrderTypeFilter(type as any)}
+                          className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${orderTypeFilter === type ? 'bg-orange-500 text-black' : 'bg-zinc-900 text-zinc-500 hover:bg-zinc-800'}`}>
+                          {type === 'PICKUP' ? '📦' : type === 'DELIVERY' ? '🚚' : '🔍'} <span className="hidden sm:inline">{type}</span>
                         </button>
                       ))}
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 gap-3 md:gap-4">
-                    <div>
-                      <span className="text-[9px] md:text-[10px] font-black text-zinc-600 uppercase tracking-wider mb-2 block">Status</span>
-                      <div className="flex flex-wrap gap-1.5 md:gap-2">
-                        {['ALL', 'PENDING', 'PREPARING', 'READY', 'DONE'].map((status) => (
-                          <button key={status} onClick={() => setFilterStatus(status)} className={`px-2.5 md:px-3 py-1.5 rounded-lg text-[9px] md:text-[10px] font-black transition-all active:scale-95 ${filterStatus === status ? 'bg-white text-black' : 'bg-zinc-900/50 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400'}`}>{status}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-[9px] md:text-[10px] font-black text-zinc-600 uppercase tracking-wider mb-2 block">Time Period</span>
-                      <div className="flex flex-wrap gap-1.5 md:gap-2">
-                        {[{ id: '24H', label: '24H' }, { id: 'WEEK', label: 'WEEK' }, { id: 'MONTH', label: 'MONTH' }, { id: 'YEAR', label: 'YEAR' }, { id: 'ALL_TIME', label: 'ALL' }].map((range) => (
-                          <button key={range.id} onClick={() => setDateFilter(range.id)} className={`px-2.5 md:px-3 py-1.5 rounded-lg text-[9px] md:text-[10px] font-black transition-all active:scale-95 ${dateFilter === range.id ? 'bg-white text-black' : 'bg-zinc-900/50 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400'}`}>{range.label}</button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* STATS */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-                  <div className="bg-zinc-950 border border-zinc-900 p-4 md:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between">
-                    <div><p className="text-[10px] md:text-xs font-black text-zinc-500 uppercase mb-1">Revenue</p><p className="text-xl md:text-2xl lg:text-3xl font-black text-orange-500 italic">₦{(totalRevenue / 1000).toFixed(0)}K</p></div>
-                    <DollarSign className="text-zinc-800 hidden md:block" size={36} />
-                  </div>
-                  <div className="bg-zinc-950 border border-zinc-900 p-4 md:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between">
-                    <div><p className="text-[10px] md:text-xs font-black text-zinc-500 uppercase mb-1">Orders</p><p className="text-xl md:text-2xl lg:text-3xl font-black text-white italic">{filteredOrders.length}</p></div>
-                    <ShoppingBag className="text-zinc-800 hidden md:block" size={36} />
-                  </div>
-                  <div className="bg-zinc-950 border border-zinc-900 p-4 md:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between cursor-pointer hover:border-green-500/30 transition-all group active:scale-95" onClick={() => setShowCategoryBreakdown(!showCategoryBreakdown)}>
-                    <div><p className="text-[10px] md:text-xs font-black text-zinc-500 uppercase mb-1 group-hover:text-green-500 transition-colors">Stock</p><p className="text-xl md:text-2xl lg:text-3xl font-black text-green-500 italic">₦{(totalStockValue / 1000).toFixed(0)}K</p><p className="text-[8px] md:text-[9px] text-zinc-600 font-bold mt-1 uppercase">Tap for details</p></div>
-                    <PackagePlus className="text-zinc-800 group-hover:text-green-500/20 transition-colors hidden md:block" size={36} />
-                  </div>
-                  <div className="bg-zinc-950 border border-zinc-900 p-4 md:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between">
-                    <div><p className="text-[10px] md:text-xs font-black text-zinc-500 uppercase mb-1">Items</p><p className="text-xl md:text-2xl lg:text-3xl font-black text-blue-500 italic">{totalStockItems}</p></div>
-                    <Package className="text-zinc-800 hidden md:block" size={36} />
-                  </div>
-                </div>
-
-                {/* CATEGORY BREAKDOWN */}
-                {showCategoryBreakdown && (
-                  <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 md:p-6 mb-6 animate-in slide-in-from-top-2 fade-in">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-xs md:text-sm font-black uppercase text-green-500 flex items-center gap-2"><PackagePlus size={14} /> Stock by Category</h3>
-                      <button onClick={() => setShowCategoryBreakdown(false)} className="text-zinc-600 hover:text-white transition-colors p-2"><X size={18} /></button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {stockByCategory.map((cat, idx) => (
-                        <div key={cat.name} className="bg-black/40 border border-zinc-900 p-4 rounded-xl hover:border-green-500/30 transition-all">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex-1"><p className="text-xs md:text-sm font-black uppercase text-white mb-1 line-clamp-1">{cat.name}</p><p className="text-[9px] md:text-[10px] text-zinc-600 font-bold uppercase">{cat.productCount} Product{cat.productCount !== 1 ? 's' : ''}</p></div>
-                            <div className="bg-green-500/10 px-2 py-1 rounded-lg flex-shrink-0 ml-2"><p className="text-[9px] md:text-[10px] font-black text-green-500">#{idx + 1}</p></div>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center"><span className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase">Value</span><span className="text-base md:text-lg font-black text-green-500">₦{cat.totalValue.toLocaleString()}</span></div>
-                            <div className="flex justify-between items-center pt-2 border-t border-zinc-900"><span className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase">Stock</span><span className="text-sm md:text-base font-black text-blue-500">{cat.totalItems}</span></div>
-                          </div>
-                          <div className="mt-3">
-                            <div className="h-1.5 md:h-1 bg-zinc-900 rounded-full overflow-hidden">
-                              <div className="h-full bg-gradient-to-r from-green-500 to-green-400 transition-all duration-500" style={{ width: `${totalStockValue > 0 ? (cat.totalValue / totalStockValue) * 100 : 0}%` }} />
-                            </div>
-                            <p className="text-[8px] md:text-[9px] text-zinc-600 font-bold mt-1 text-right">{totalStockValue > 0 ? ((cat.totalValue / totalStockValue) * 100).toFixed(1) : 0}% of total</p>
-                          </div>
-                        </div>
+                  <div>
+                    <p className="text-[10px] font-black text-zinc-600 uppercase tracking-wider mb-2">Status</p>
+                    <div className="flex flex-wrap gap-1">
+                      {['ALL', 'PENDING', 'PREPARING', 'READY', 'DONE'].map(s => (
+                        <button key={s} onClick={() => setFilterStatus(s)}
+                          className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${filterStatus === s ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-600 hover:bg-zinc-800'}`}>
+                          {s}
+                        </button>
                       ))}
                     </div>
                   </div>
-                )}
-              </>
-            )}
-          </header>
-
-          {/* MAIN CONTENT - Dashboard only */}
-          {activeTab === 'dashboard' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* LEFT SIDEBAR */}
-              <div className="lg:col-span-1 space-y-6">
-                {/* CATEGORIES */}
-                <section className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl">
-                  <h2 className="text-xs font-black uppercase text-orange-500 mb-4 flex items-center gap-2"><PlusCircle size={12} /> Categories</h2>
-                  <div className="flex gap-2 mb-4">
-                    <input value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="NAME..." className="flex-1 bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs font-black uppercase outline-none focus:border-orange-500" />
-                    <button onClick={handleAddCategory} className="bg-white text-black p-2 rounded-xl"><Save size={16} /></button>
+                  <div>
+                    <p className="text-[10px] font-black text-zinc-600 uppercase tracking-wider mb-2">Period</p>
+                    <div className="flex flex-wrap gap-1">
+                      {[{ id: '24H', label: '24H' }, { id: 'WEEK', label: 'Week' }, { id: 'MONTH', label: 'Month' }, { id: 'YEAR', label: 'Year' }, { id: 'ALL_TIME', label: 'All' }].map(r => (
+                        <button key={r.id} onClick={() => setDateFilter(r.id)}
+                          className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${dateFilter === r.id ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-600 hover:bg-zinc-800'}`}>
+                          {r.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
-                    {categories.map(c => (
-                      <div key={c.id} className="flex justify-between items-center bg-black/40 border border-zinc-900 px-3 py-2 rounded-xl">
-                        <span className="text-xs font-black uppercase">{c.name}</span>
-                        <button onClick={() => deleteCategory(c.id)} className="text-zinc-800 hover:text-red-500"><Trash2 size={12} /></button>
+                </div>
+                <div className="flex justify-between items-center mt-3 pt-3 border-t border-zinc-900">
+                  <p className="text-[10px] text-zinc-600 font-bold">{filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''} matching filters</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowAddresses(!showAddresses)}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${showAddresses ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'bg-zinc-900 text-zinc-500'}`}>
+                      {showAddresses ? 'Hide' : 'Show'} Addresses
+                    </button>
+                    <button onClick={exportCSV}
+                      className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase bg-zinc-900 text-zinc-500 hover:text-white transition-all flex items-center gap-1">
+                      <Download size={10} /> CSV
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── STAT CARDS ── */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div onClick={() => setShowRevenueBreakdown(!showRevenueBreakdown)}
+                  className="bg-zinc-950 border border-zinc-900 hover:border-orange-500/30 p-4 md:p-5 rounded-2xl cursor-pointer group transition-all active:scale-[0.98]">
+                  <div className="flex justify-between items-start mb-3">
+                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-wider group-hover:text-orange-400 transition-colors">Revenue</p>
+                    <div className={`p-1 rounded-full transition-colors ${showRevenueBreakdown ? 'bg-orange-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>
+                      {showRevenueBreakdown ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    </div>
+                  </div>
+                  <p className="text-2xl md:text-3xl font-black text-orange-500 italic">₦{(totalRevenue / 1000).toFixed(0)}K</p>
+                  <p className="text-[9px] text-zinc-600 font-bold mt-1 uppercase">Tap for breakdown</p>
+                </div>
+
+                <div className="bg-zinc-950 border border-zinc-900 p-4 md:p-5 rounded-2xl">
+                  <div className="flex justify-between items-start mb-3">
+                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Orders</p>
+                    <ShoppingBag size={16} className="text-zinc-800" />
+                  </div>
+                  <p className="text-2xl md:text-3xl font-black text-white italic">{filteredOrders.length}</p>
+                  <p className="text-[9px] text-zinc-600 font-bold mt-1 uppercase">In selected period</p>
+                </div>
+
+                <div onClick={() => setShowCategoryBreakdown(!showCategoryBreakdown)}
+                  className="bg-zinc-950 border border-zinc-900 hover:border-green-500/30 p-4 md:p-5 rounded-2xl cursor-pointer group transition-all active:scale-[0.98]">
+                  <div className="flex justify-between items-start mb-3">
+                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-wider group-hover:text-green-400 transition-colors">Stock</p>
+                    <div className={`p-1 rounded-full transition-colors ${showCategoryBreakdown ? 'bg-green-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>
+                      {showCategoryBreakdown ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    </div>
+                  </div>
+                  <p className="text-2xl md:text-3xl font-black text-green-500 italic">₦{(totalStockValue / 1000).toFixed(0)}K</p>
+                  <p className="text-[9px] text-zinc-600 font-bold mt-1 uppercase">Tap for breakdown</p>
+                </div>
+
+                <div className="bg-zinc-950 border border-zinc-900 p-4 md:p-5 rounded-2xl">
+                  <div className="flex justify-between items-start mb-3">
+                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Items</p>
+                    <Package size={16} className="text-zinc-800" />
+                  </div>
+                  <p className="text-2xl md:text-3xl font-black text-blue-500 italic">{totalStockItems}</p>
+                  <p className="text-[9px] text-zinc-600 font-bold mt-1 uppercase">Units in stock</p>
+                </div>
+              </div>
+
+              {/* ── REVENUE BREAKDOWN ── */}
+              {showRevenueBreakdown && (
+                <div className="bg-zinc-950 border border-orange-500/20 rounded-2xl p-5 animate-in slide-in-from-top-2 fade-in duration-200">
+                  <div className="flex items-center justify-between mb-5">
+                    <h3 className="text-sm font-black uppercase text-orange-500 flex items-center gap-2">
+                      <BarChart2 size={14} /> Revenue Breakdown
+                    </h3>
+                    <button onClick={() => setShowRevenueBreakdown(false)} className="text-zinc-600 hover:text-white transition-colors p-1">
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                    <div className="bg-black/50 border border-zinc-900 rounded-xl p-4">
+                      <p className="text-[10px] font-black text-zinc-500 uppercase mb-1">Gross Revenue</p>
+                      <p className="text-2xl font-black text-white">₦{grossRevenue.toLocaleString()}</p>
+                      <p className="text-[9px] text-zinc-600 font-bold mt-0.5">Before discounts</p>
+                    </div>
+                    <div className="bg-red-500/8 border border-red-500/20 rounded-xl p-4">
+                      <p className="text-[10px] font-black text-red-400 uppercase mb-1">Discount Deductions</p>
+                      <p className="text-2xl font-black text-red-500">−₦{totalDiscountDeductions.toLocaleString()}</p>
+                      <p className="text-[9px] text-zinc-600 font-bold mt-0.5">{ordersWithDiscount.length} discounted order{ordersWithDiscount.length !== 1 ? 's' : ''}</p>
+                    </div>
+                    <div className="bg-orange-500/8 border border-orange-500/20 rounded-xl p-4">
+                      <p className="text-[10px] font-black text-orange-400 uppercase mb-1">Net Revenue</p>
+                      <p className="text-2xl font-black text-orange-500">₦{netRevenue.toLocaleString()}</p>
+                      <p className="text-[9px] text-zinc-600 font-bold mt-0.5">After all discounts</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                      <p className="text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                        <TrendingUp size={11} className="text-orange-500" /> Products Currently On Discount
+                      </p>
+                      {discountRankedProducts.length === 0 ? (
+                        <div className="text-center py-6 border border-dashed border-zinc-800 rounded-xl">
+                          <p className="text-xs text-zinc-600 font-bold uppercase">No products on discount</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {discountRankedProducts.map((p, idx) => (
+                            <div key={p.id} className="flex items-center gap-3 bg-black/40 border border-zinc-900 rounded-xl px-3 py-2.5">
+                              <div className="w-6 h-6 rounded-lg bg-orange-500/15 flex items-center justify-center flex-shrink-0">
+                                <p className="text-[9px] font-black text-orange-500">#{idx + 1}</p>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold truncate text-white">{p.name}</p>
+                                <p className="text-[9px] text-zinc-500 font-bold">{p.category} · Stock: {p.stock}</p>
+                              </div>
+                              <div className="flex-shrink-0 text-right">
+                                <p className="text-sm font-black text-orange-500">{p.manual_discount}% OFF</p>
+                                <p className="text-[9px] text-zinc-500">₦{Math.round(p.price * (1 - p.manual_discount / 100)).toLocaleString()}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                        <Tag size={11} className="text-purple-500" /> Promo Code Usage
+                      </p>
+                      {promoCodeRank.length === 0 ? (
+                        <div className="text-center py-6 border border-dashed border-zinc-800 rounded-xl">
+                          <p className="text-xs text-zinc-600 font-bold uppercase">No promo codes used yet</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {promoCodeRank.map((entry: any, idx) => (
+                            <div key={entry.code} className="flex items-center gap-3 bg-black/40 border border-zinc-900 rounded-xl px-3 py-2.5">
+                              <div className="w-6 h-6 rounded-lg bg-purple-500/15 flex items-center justify-center flex-shrink-0">
+                                <p className="text-[9px] font-black text-purple-400">#{idx + 1}</p>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-black tracking-widest text-white">{entry.code}</p>
+                                <p className="text-[9px] text-zinc-500 font-bold">{entry.uses} use{entry.uses !== 1 ? 's' : ''}</p>
+                              </div>
+                              <div className="flex-shrink-0 text-right">
+                                <p className="text-sm font-black text-red-400">−₦{entry.totalSaved.toLocaleString()}</p>
+                                <p className="text-[9px] text-zinc-500">saved by customers</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── STOCK CATEGORY BREAKDOWN ── */}
+              {showCategoryBreakdown && (
+                <div className="bg-zinc-950 border border-green-500/20 rounded-2xl p-5 animate-in slide-in-from-top-2 fade-in duration-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-black uppercase text-green-500 flex items-center gap-2"><PackagePlus size={14} /> Stock by Category</h3>
+                    <button onClick={() => setShowCategoryBreakdown(false)} className="text-zinc-600 hover:text-white transition-colors p-1"><X size={16} /></button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {stockByCategory.map((cat, idx) => (
+                      <div key={cat.name} className="bg-black/40 border border-zinc-900 hover:border-green-500/25 p-4 rounded-xl transition-all">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-black uppercase text-white truncate">{cat.name}</p>
+                            <p className="text-[9px] text-zinc-600 font-bold uppercase mt-0.5">{cat.productCount} product{cat.productCount !== 1 ? 's' : ''}</p>
+                          </div>
+                          <div className="bg-green-500/10 px-2 py-1 rounded-lg ml-2">
+                            <p className="text-[9px] font-black text-green-500">#{idx + 1}</p>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between">
+                            <span className="text-[9px] text-zinc-500 font-bold uppercase">Value</span>
+                            <span className="text-base font-black text-green-500">₦{cat.totalValue.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between pt-1.5 border-t border-zinc-900">
+                            <span className="text-[9px] text-zinc-500 font-bold uppercase">Stock</span>
+                            <span className="text-sm font-black text-blue-500">{cat.totalItems} units</span>
+                          </div>
+                        </div>
+                        <div className="mt-3 h-1 bg-zinc-900 rounded-full overflow-hidden">
+                          <div className="h-full bg-gradient-to-r from-green-500 to-emerald-400 transition-all duration-500"
+                            style={{ width: `${totalStockValue > 0 ? (cat.totalValue / totalStockValue) * 100 : 0}%` }} />
+                        </div>
+                        <p className="text-[8px] text-zinc-600 font-bold mt-1 text-right">
+                          {totalStockValue > 0 ? ((cat.totalValue / totalStockValue) * 100).toFixed(1) : 0}% of total
+                        </p>
                       </div>
                     ))}
                   </div>
-                </section>
+                </div>
+              )}
 
-                {/* MESSAGES */}
-                {msgs.map((m: any) => (
-                  <div key={m.id} className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl group relative">
-                    <button onClick={async () => { if (confirm("Delete this message?")) { await supabase.from('messages').delete().eq('id', m.id); fetchManagerData(); } }} className="absolute top-4 right-4 text-zinc-700 hover:text-red-500 transition-colors">
-                      <Trash2 size={14} />
-                    </button>
-                    <div className="flex justify-between items-start mb-3">
-                      <span className="text-xs font-black text-white bg-zinc-900 px-3 py-1 rounded-full uppercase italic">{m.name}</span>
-                      <span className="text-zinc-600 text-xs font-bold mr-6">{new Date(m.created_at).toLocaleDateString()}</span>
+              {/* ── MAIN CONTENT GRID ── */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <div className="space-y-4">
+                  <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-5">
+                    <h2 className="text-xs font-black uppercase text-orange-500 mb-4 flex items-center gap-2"><PlusCircle size={12} /> Categories</h2>
+                    <div className="flex gap-2 mb-3">
+                      <input value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)}
+                        placeholder="New category..."
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
+                        className="flex-1 bg-black border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-black uppercase outline-none focus:border-orange-500 transition-all" />
+                      <button onClick={handleAddCategory} className="bg-white text-black p-2.5 rounded-xl hover:bg-zinc-200 transition-all">
+                        <Save size={14} />
+                      </button>
                     </div>
-                    <p className="text-xs text-zinc-500 mb-3 font-bold lowercase tracking-tight">{m.email}</p>
-                    <div className="bg-black p-3 rounded-xl border border-zinc-900 group-hover:border-orange-500/30 transition-colors">
-                      <p className="text-xs text-zinc-300 leading-relaxed italic font-medium">"{m.message}"</p>
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto mgr-scroll">
+                      {categories.map(c => (
+                        <div key={c.id} className="flex justify-between items-center bg-black/40 border border-zinc-900 px-3 py-2 rounded-xl hover:border-zinc-800 transition-all">
+                          <span className="text-xs font-black uppercase text-white">{c.name}</span>
+                          <button onClick={() => deleteCategory(c.id)} className="text-zinc-700 hover:text-red-500 transition-colors">
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      ))}
+                      {categories.length === 0 && <p className="text-xs text-zinc-700 font-bold uppercase text-center py-3">No categories yet</p>}
                     </div>
-                    <a href={`mailto:${m.email}?subject=Support`} className="mt-3 inline-block text-xs font-black uppercase text-orange-500 hover:text-orange-400">Reply to {m.name} →</a>
                   </div>
-                ))}
 
-                {/* INVENTORY TOGGLE */}
-                <button onClick={() => setShowInventory(!showInventory)} className="w-full py-3 bg-zinc-900/50 border border-zinc-800 rounded-2xl flex items-center justify-center gap-3 hover:bg-orange-600/10 hover:border-orange-500/50 transition-all group">
-                  <div className={`p-1 rounded-full transition-colors ${showInventory ? 'bg-orange-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>
-                    {showInventory ? <ChevronUp size={14} /> : <PackagePlus size={14} />}
-                  </div>
-                  <span className="text-[10px] font-black uppercase tracking-[0.15em]">{showInventory ? "Hide Inventory" : "Manage Inventory"}</span>
-                </button>
-              </div>
-
-              {/* RIGHT CONTENT - ORDERS */}
-              <div className="lg:col-span-2">
-                <section className="bg-zinc-950 border border-zinc-900 rounded-2xl overflow-hidden">
-                  <div className="p-6 border-b border-zinc-900 bg-zinc-900/20">
-                    <h2 className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
-                      <Clock size={12} className="text-orange-500" /> Recent Sales ({orderTypeFilter})
-                    </h2>
-                  </div>
-                  <div className="divide-y divide-zinc-900 max-h-[600px] overflow-y-auto custom-scrollbar">
-                    {filteredOrders.length === 0 ? (
-                      <div className="p-20 text-center opacity-20">
-                        <p className="text-xs font-black uppercase tracking-widest">No orders found</p>
+                  {msgs.map((m: any) => (
+                    <div key={m.id} className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 relative group hover:border-zinc-700 transition-all">
+                      <button onClick={async () => { if (confirm("Delete this message?")) { await supabase.from('messages').delete().eq('id', m.id); fetchManagerData(); } }}
+                        className="absolute top-3 right-3 text-zinc-700 hover:text-red-500 transition-colors">
+                        <Trash2 size={12} />
+                      </button>
+                      <div className="flex justify-between items-center mb-2 pr-5">
+                        <span className="text-xs font-black text-white bg-zinc-900 px-2.5 py-1 rounded-full uppercase">{m.name}</span>
+                        <span className="text-zinc-600 text-[10px] font-bold">{new Date(m.created_at).toLocaleDateString()}</span>
                       </div>
-                    ) : (
-                      filteredOrders.map(order => {
-                        const isPickup = !order.address || order.address === null;
-                        return (
-                          <div key={order.id} className="p-5 hover:bg-white/5 transition-colors group">
-                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-3">
-                              <div className="flex items-center gap-3">
-                                <div className="bg-black border border-zinc-800 px-2 py-1 rounded-lg">
-                                  <p className="text-xs font-black uppercase tracking-tighter">#{order.id}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs font-black italic uppercase">{order.customer_name}</p>
-                                  {/* ✅ Full date & time displayed clearly */}
-                                  <p className="text-xs font-bold text-orange-400 mt-1 flex items-center gap-1">
-                                    <Clock size={10} className="text-orange-500" />
-                                    {formatOrderDateTime(order.created_at)}
-                                  </p>
-                                  {order.phone_number && (
-                                    <p className="text-xs text-green-500 font-bold mt-1">📞 {order.phone_number}</p>
-                                  )}
-                                  <span className={`inline-block mt-2 px-2 py-1 rounded-lg text-[9px] font-black uppercase ${isPickup ? 'bg-blue-600/20 text-blue-500' : 'bg-green-600/20 text-green-500'}`}>
-                                    {isPickup ? '📦 PICKUP' : '🚚 DELIVERY'}
-                                  </span>
-                                </div>
-                              </div>
-                              <select
-                                value={order.status}
-                                onChange={(e) => updateStatus(order.id, e.target.value)}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase border-none outline-none ${order.status === 'DONE' ? 'bg-green-600/20 text-green-500' : order.status === 'READY' ? 'bg-blue-600/20 text-blue-500' : order.status === 'PENDING' ? 'bg-orange-600/20 text-orange-500' : 'bg-zinc-800 text-zinc-400'}`}
-                              >
-                                <option value="PENDING">PENDING</option>
-                                <option value="PREPARING">PREPARING</option>
-                                <option value="READY">READY</option>
-                                <option value="DONE">DONE</option>
-                              </select>
-                            </div>
-                            <div className="bg-black/40 border border-zinc-900 p-4 rounded-xl mb-3">
-                              <p className="text-xs font-black uppercase tracking-widest text-zinc-600 mb-2 italic">Items Summary</p>
-                              <p className="text-xs font-medium leading-relaxed">{order.items}</p>
-                              <div className="mt-3 flex justify-between items-center border-t border-zinc-900/50 pt-3">
-                                <p className="text-xs font-black uppercase">Total Paid</p>
-                                <p className="text-lg font-black italic text-orange-500">₦{order.total_price?.toLocaleString()}</p>
-                              </div>
-                            </div>
-                            {showAddresses && !isPickup && (
-                              <div className="mt-3 space-y-2">
-                                <div className="flex items-start gap-2 p-3 bg-orange-500/5 border border-orange-500/10 rounded-xl">
-                                  <MapPin size={12} className="text-orange-500 shrink-0 mt-0.5" />
+                      <p className="text-[10px] text-zinc-500 font-bold mb-2">{m.email}</p>
+                      <div className="bg-black/40 border border-zinc-900 group-hover:border-orange-500/20 p-3 rounded-xl transition-all">
+                        <p className="text-xs text-zinc-400 leading-relaxed italic">"{m.message}"</p>
+                      </div>
+                      <a href={`mailto:${m.email}?subject=Support`}
+                        className="mt-2 inline-block text-xs font-black uppercase text-orange-500 hover:text-orange-400 transition-colors">
+                        Reply to {m.name} →
+                      </a>
+                    </div>
+                  ))}
+
+                  <button onClick={() => setShowInventory(!showInventory)}
+                    className="w-full py-3 bg-zinc-950 border border-zinc-900 hover:border-orange-500/30 rounded-2xl flex items-center justify-center gap-2.5 transition-all group">
+                    <div className={`p-1 rounded-lg transition-colors ${showInventory ? 'bg-orange-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>
+                      {showInventory ? <ChevronUp size={13} /> : <PackagePlus size={13} />}
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400 group-hover:text-white transition-colors">
+                      {showInventory ? 'Hide Inventory' : 'Manage Inventory'}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Orders */}
+                <div className="lg:col-span-2">
+                  <div className="bg-zinc-950 border border-zinc-900 rounded-2xl overflow-hidden">
+                    <div className="p-4 border-b border-zinc-900 flex items-center justify-between">
+                      <h2 className="text-xs font-black uppercase text-white flex items-center gap-2">
+                        <Clock size={12} className="text-orange-500" /> Sales — {orderTypeFilter}
+                      </h2>
+                      <span className="text-[9px] font-black text-zinc-600 bg-zinc-900 px-2 py-1 rounded-lg">{filteredOrders.length} orders</span>
+                    </div>
+
+                    {orders.filter(o => o.status === 'COMPLETED').length > 0 && (
+                      <div className="px-4 py-2.5 bg-green-500/5 border-b border-green-500/10 flex items-center gap-2 flex-wrap">
+                        <CheckCircle size={11} className="text-green-500 flex-shrink-0" />
+                        <span className="text-[10px] font-black text-green-400 uppercase">Customer Confirmed:</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {orders.filter(o => o.status === 'COMPLETED').map(order => (
+                            <span key={order.id} className="bg-green-500/10 border border-green-500/15 text-green-400 text-[9px] font-black px-2 py-0.5 rounded-lg">
+                              #{order.id} · ₦{(order.total_price || 0).toLocaleString()}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="divide-y divide-zinc-900 max-h-[600px] overflow-y-auto mgr-scroll">
+                      {filteredOrders.length === 0 ? (
+                        <div className="p-20 text-center">
+                          <ShoppingBag size={32} className="text-zinc-800 mx-auto mb-3" />
+                          <p className="text-xs font-black uppercase text-zinc-600">No orders found</p>
+                        </div>
+                      ) : (
+                        filteredOrders.map(order => {
+                          const isPickup = !order.address;
+                          return (
+                            <div key={order.id} className="p-4 hover:bg-white/[0.02] transition-colors">
+                              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-3">
+                                <div className="flex items-start gap-3">
+                                  <div className="bg-black border border-zinc-800 px-2.5 py-1.5 rounded-lg flex-shrink-0">
+                                    <p className="text-xs font-black">#{order.id}</p>
+                                  </div>
                                   <div>
-                                    <p className="text-xs font-black text-orange-500 uppercase tracking-widest mb-1">Delivery</p>
-                                    <p className="text-xs font-bold italic leading-tight">{order.address}</p>
-                                    {order.payment_method && (
-                                      <p className="text-xs text-zinc-500 mt-1">Payment: {order.payment_method === 'cash' ? '💵 Cash' : '📱 Transfer'} on delivery</p>
-                                    )}
+                                    <p className="text-sm font-black italic uppercase text-white">{order.customer_name}</p>
+                                    <p className="text-[10px] font-bold text-orange-400 mt-0.5 flex items-center gap-1">
+                                      <Clock size={9} /> {formatOrderDateTime(order.created_at)}
+                                    </p>
+                                    {order.phone_number && <p className="text-[10px] text-green-500 font-bold mt-0.5">📞 {order.phone_number}</p>}
+                                    <span className={`inline-block mt-1.5 px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${isPickup ? 'bg-blue-600/15 text-blue-400' : 'bg-green-600/15 text-green-400'}`}>
+                                      {isPickup ? '📦 Pickup' : '🚚 Delivery'}
+                                    </span>
                                   </div>
                                 </div>
+                                <select value={order.status} onChange={(e) => updateStatus(order.id, e.target.value)}
+                                  className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase border-none outline-none flex-shrink-0 $order.status === 'AWAITING_CONFIRMATION' ? 'bg-yellow-600/20 text-yellow-400' :
+                                                                                                                                               order.status === 'CANCELLED' ? 'bg-red-600/20 text-red-500' : 'bg-green-600/20 text-green-500' : order.status === 'READY' ? 'bg-blue-600/20 text-blue-500' : order.status === 'PENDING' ? 'bg-orange-600/20 text-orange-500' : 'bg-zinc-800 text-zinc-400'}`}>
+                                  {['AWAITING_CONFIRMATION','PENDING','PREPARING','READY','DONE','COMPLETED','CANCELLED'].map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
                               </div>
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
+
+                              <div className="bg-black/40 border border-zinc-900 p-3.5 rounded-xl">
+                                <p className="text-[9px] font-black uppercase text-zinc-600 mb-1.5 tracking-wider">Items</p>
+                                <p className="text-xs font-medium leading-relaxed text-zinc-300">{order.items}</p>
+                                {order.discount_code && (
+                                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-zinc-900">
+                                    <Tag size={10} className="text-purple-500" />
+                                    <span className="text-[9px] font-black text-purple-400 uppercase">{order.discount_code}</span>
+                                    <span className="text-[9px] font-bold text-red-400">−₦{(order.discount_amount || 0).toFixed(0)} off</span>
+                                  </div>
+                                )}
+                                <div className="flex justify-between items-center mt-2 pt-2 border-t border-zinc-900/50">
+                                  <p className="text-xs font-black uppercase text-zinc-500">Total</p>
+                                  <p className="text-base font-black italic text-orange-500">₦{order.total_price?.toLocaleString()}</p>
+                                </div>
+                              </div>
+
+                              {showAddresses && !isPickup && (
+                                <div className="flex items-start gap-2 mt-2.5 p-3 bg-orange-500/5 border border-orange-500/10 rounded-xl">
+                                  <MapPin size={11} className="text-orange-500 flex-shrink-0 mt-0.5" />
+                                  <div>
+                                    <p className="text-[9px] font-black text-orange-400 uppercase tracking-wider mb-0.5">Delivery Address</p>
+                                    <p className="text-xs font-bold text-white">{order.address}</p>
+                                    {order.payment_method && <p className="text-[9px] text-zinc-500 mt-0.5">Via: {order.payment_method}</p>}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
-                </section>
+                </div>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* INVENTORY MODAL */}
+      {/* ══ INVENTORY MODAL ══ */}
       {showInventory && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
-          <div className="bg-zinc-950 border border-zinc-800 w-full max-w-5xl h-[85vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden">
-            <div className="flex-shrink-0 p-4 border-b border-zinc-800 bg-zinc-950">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-black uppercase text-white flex items-center gap-2"><PackagePlus size={16} /> Inventory Management</h2>
-                <button onClick={() => setShowInventory(false)} className="text-zinc-500 hover:text-white transition-colors"><X size={20} /></button>
+          <div className="bg-[#0a0a0a] border border-zinc-800 w-full max-w-5xl h-[88vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden">
+            <div className="flex-shrink-0 p-4 border-b border-zinc-800">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-black uppercase text-white flex items-center gap-2"><PackagePlus size={15} className="text-orange-500" /> Inventory</h2>
+                <button onClick={() => setShowInventory(false)} className="text-zinc-500 hover:text-white transition-colors"><X size={18} /></button>
               </div>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input type="text" placeholder="SEARCH PRODUCTS..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="flex-1 bg-black border border-zinc-800 rounded-lg px-3 py-2 text-xs font-black uppercase outline-none focus:border-orange-500 transition-colors" />
-                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-black uppercase outline-none text-zinc-400">
-                  <option value="DEFAULT">SORT BY</option>
-                  <option value="PRICE_LOW">PRICE: LOW TO HIGH</option>
-                  <option value="PRICE_HIGH">PRICE: HIGH TO LOW</option>
-                  <option value="STOCK_LOW">STOCK: LOW TO HIGH</option>
-                  <option value="CATEGORY">CATEGORY</option>
+              <div className="flex flex-col sm:flex-row gap-2 flex-wrap">
+                <input type="text" placeholder="Search products..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                  className="flex-1 bg-black border border-zinc-800 rounded-lg px-3 py-2 text-xs font-black uppercase outline-none focus:border-orange-500 transition-all" />
+                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}
+                  className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-black uppercase outline-none text-zinc-400">
+                  <option value="DEFAULT">Sort By</option>
+                  <option value="PRICE_LOW">Price: Low → High</option>
+                  <option value="PRICE_HIGH">Price: High → Low</option>
+                  <option value="STOCK_LOW">Stock: Low → High</option>
+                  <option value="CATEGORY">Category A-Z</option>
                 </select>
+                <button onClick={handleSelectAll}
+                  className="bg-zinc-800 hover:bg-zinc-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase transition-all whitespace-nowrap">
+                  {selectedProducts.length === inventoryFilteredProducts.length && inventoryFilteredProducts.length > 0 ? 'Deselect All' : 'Select All'}
+                </button>
+                {selectedProducts.length > 0 && (
+                  <button onClick={handleBulkDelete}
+                    className="bg-red-600 hover:bg-red-500 text-white px-3 py-2 rounded-lg text-xs font-black uppercase transition-all whitespace-nowrap flex items-center gap-1.5">
+                    <Trash2 size={11} /> Delete ({selectedProducts.length})
+                  </button>
+                )}
               </div>
+              {selectedProducts.length > 0 && (
+                <p className="text-[10px] font-bold text-red-400 mt-2">{selectedProducts.length} selected</p>
+              )}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                {products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
-                  .sort((a, b) => {
-                    if (sortBy === 'PRICE_LOW') return a.price - b.price;
-                    if (sortBy === 'PRICE_HIGH') return b.price - a.price;
-                    if (sortBy === 'STOCK_LOW') return (a.stock || 0) - (b.stock || 0);
-                    if (sortBy === 'CATEGORY') return (a.category || '').localeCompare(b.category || '');
-                    return 0;
-                  })
-                  .map(p => {
-                    const stock = p.stock || 0;
-                    const isLowStock = stock > 0 && stock < 5;
-                    const isSoldOut = stock <= 0;
-                    return (
-                      <div key={p.id} className={`bg-black/40 p-2 rounded-lg border flex flex-col gap-1.5 group hover:border-orange-500/50 transition-all ${isSoldOut ? 'border-red-900/50' : isLowStock ? 'border-yellow-900/50' : 'border-zinc-900'}`}>
-                        <div className="relative group/img aspect-square overflow-hidden rounded-md">
-                          <img src={p.image || p.image_url || 'https://via.placeholder.com/400'} className="w-full h-full object-cover bg-zinc-900" onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400?text=Error'; }} />
-                          <div className={`absolute top-1 left-1 px-2 py-1 rounded-md text-[8px] font-black ${isSoldOut ? 'bg-red-600 text-white' : isLowStock ? 'bg-yellow-500 text-black' : 'bg-green-600 text-white'}`}>{stock} IN STOCK</div>
-                          <input type="file" accept="image/*" id={`replace-${p.id}`} className="hidden" onChange={(e) => handleReplaceImageUrl(p.id, e)} />
-                          <label htmlFor={`replace-${p.id}`} className="absolute inset-0 bg-black/80 opacity-0 group-hover/img:opacity-100 transition-all flex flex-col items-center justify-center cursor-pointer text-[8px] font-black"><Upload size={12} className="mb-1" /> UPDATE</label>
+            <div className="flex-1 overflow-y-auto p-4 mgr-scroll">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5">
+                {inventoryFilteredProducts.map(p => {
+                  const stock = p.stock || 0;
+                  const isSoldOut = stock <= 0;
+                  const isLowStock = stock > 0 && stock < 5;
+                  const isSelected = selectedProducts.includes(p.id);
+                  return (
+                    <div key={p.id} className={`bg-black/50 p-2 rounded-xl border flex flex-col gap-1.5 hover:border-orange-500/40 transition-all ${isSelected ? 'border-red-500 bg-red-500/5' : isSoldOut ? 'border-red-900/40' : isLowStock ? 'border-yellow-900/40' : 'border-zinc-900'}`}>
+                      <div className="flex items-center justify-between">
+                        <input type="checkbox" checked={isSelected} onChange={() => toggleSelectProduct(p.id)} className="w-3.5 h-3.5 accent-red-500 cursor-pointer" />
+                      </div>
+                      <div className="relative aspect-square overflow-hidden rounded-lg group/img">
+                        <img src={p.image || p.image_url || 'https://via.placeholder.com/400'} className="w-full h-full object-cover bg-zinc-900"
+                          onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400?text=Error'; }} />
+                        <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded text-[7px] font-black ${isSoldOut ? 'bg-red-600 text-white' : isLowStock ? 'bg-yellow-500 text-black' : 'bg-green-600 text-white'}`}>
+                          {stock}
                         </div>
-                        <div className="min-w-0 px-0.5">
-                          <p className="text-[9px] font-black uppercase truncate leading-tight mb-0.5">{p.name}</p>
-                          <p className="text-[9px] text-orange-500 font-bold">₦{(p.price || 0).toLocaleString()}</p>
-                          <div className="flex gap-1.5 justify-between mt-1">
-                            <button onClick={() => openEditModal(p)} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-[8px] font-black uppercase transition-colors">EDIT</button>
-                            <button onClick={() => deleteProduct(p.id)} className="text-zinc-600 hover:text-red-500 transition-colors"><Trash2 size={10} /></button>
-                          </div>
+                        <input type="file" accept="image/*" id={`rep-${p.id}`} className="hidden" onChange={(e) => handleReplaceImageUrl(p.id, e)} />
+                        <label htmlFor={`rep-${p.id}`} className="absolute inset-0 bg-black/80 opacity-0 group-hover/img:opacity-100 transition-all flex items-center justify-center cursor-pointer text-[8px] font-black gap-1">
+                          <Upload size={10} /> Update
+                        </label>
+                      </div>
+                      <div className="px-0.5">
+                        <p className="text-[9px] font-black uppercase truncate text-white">{p.name}</p>
+                        <p className="text-[9px] text-orange-500 font-bold">₦{(p.price || 0).toLocaleString()}</p>
+                        {p.expiry_date && <ExpiryBadge expiryDate={p.expiry_date} />}
+                        <div className="flex gap-1 mt-1.5">
+                          <button onClick={() => openEditModal(p)} className="flex-1 bg-blue-600/80 hover:bg-blue-500 text-white px-1.5 py-1 rounded text-[8px] font-black uppercase transition-all">Edit</button>
+                          <button onClick={() => deleteProduct(p.id)} className="p-1 text-zinc-600 hover:text-red-500 transition-colors">
+                            <Trash2 size={10} />
+                          </button>
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="flex-shrink-0 p-4 border-t border-zinc-800 bg-zinc-950">
-              <p className="text-[9px] font-black text-zinc-600 uppercase mb-2 italic text-center">Add New Item</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input placeholder="NAME" value={newName} onChange={e => setNewName(e.target.value)} className="bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:border-orange-500" />
-                <input placeholder="PRICE" type="number" value={newPrice} onChange={e => setNewPrice(e.target.value)} className="bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:border-orange-500" />
-                <input placeholder="STOCK" type="number" value={newStock} onChange={e => setNewStock(e.target.value)} className="bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:border-orange-500" />
-                <select value={newCategory} onChange={e => setNewCategory(e.target.value)} className="bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase">
-                  <option value="">CATEGORY</option>
+            <div className="flex-shrink-0 p-4 border-t border-zinc-800">
+              <p className="text-[9px] font-black text-zinc-600 uppercase mb-2 text-center">Add New Product</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <input placeholder="Name" value={newName} onChange={e => setNewName(e.target.value)} className="bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:border-orange-500 transition-all" />
+                <input placeholder="Price" type="number" value={newPrice} onChange={e => setNewPrice(e.target.value)} className="bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:border-orange-500 transition-all" />
+                <input placeholder="Stock" type="number" value={newStock} onChange={e => setNewStock(e.target.value)} className="bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:border-orange-500 transition-all" />
+                <select value={newCategory} onChange={e => setNewCategory(e.target.value)} className="bg-black border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:border-orange-500 transition-all">
+                  <option value="">Category</option>
                   {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                 </select>
                 <div className="relative sm:col-span-2">
-                  <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" id="new-product-modal" />
-                  <label htmlFor="new-product-modal" className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase flex items-center justify-center gap-2 cursor-pointer hover:bg-zinc-800">
-                    <Upload size={10} /> {newProduct.image_url ? 'UPLOADED ✓' : 'UPLOAD IMAGE'}
+                  <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" id="new-product-inv" />
+                  <label htmlFor="new-product-inv" className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-[10px] font-black uppercase flex items-center justify-center gap-2 cursor-pointer hover:bg-zinc-800 transition-all">
+                    <Upload size={10} /> {newProduct.image_url ? 'Uploaded ✓' : 'Upload Image'}
                   </label>
                 </div>
               </div>
-              <button onClick={handleAddProduct} className="w-full bg-orange-600 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-orange-500 transition-colors mt-2">Add to Inventory</button>
+              <button onClick={handleAddProduct} className="w-full bg-orange-600 hover:bg-orange-500 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 mt-2">
+                + Add to Inventory
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* EDIT PRODUCT MODAL */}
+      {/* ══ EDIT MODAL ══ */}
       {showEditModal && editingProduct && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/95 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-zinc-950 border border-zinc-800 w-full max-w-md max-h-[90vh] sm:max-h-[85vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300">
-            <div className="flex-shrink-0 p-4 sm:p-6 border-b border-zinc-800 bg-zinc-900/50">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs sm:text-sm font-black uppercase text-white flex items-center gap-2"><Edit3 size={14} className="text-orange-500" /> Edit Product</h3>
-                <button onClick={() => { setShowEditModal(false); setEditingProduct(null); }} className="text-zinc-500 hover:text-white transition-colors p-1"><X size={18} /></button>
-              </div>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/95 backdrop-blur-sm">
+          <div className="bg-[#0a0a0a] border border-zinc-800 w-full max-w-md max-h-[90vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden">
+            <div className="flex-shrink-0 p-5 border-b border-zinc-800 flex items-center justify-between">
+              <h3 className="text-sm font-black uppercase text-white flex items-center gap-2"><Edit3 size={13} className="text-orange-500" /> Edit Product</h3>
+              <button onClick={() => { setShowEditModal(false); setEditingProduct(null); }} className="text-zinc-500 hover:text-white transition-colors"><X size={18} /></button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-5 space-y-3.5 mgr-scroll">
               <div>
-                <label className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 sm:mb-2 block">Product Name</label>
-                <input type="text" value={editingProduct.name} onChange={(e) => handleEditChange('name', e.target.value)} className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 sm:py-2.5 text-xs font-black uppercase outline-none focus:border-orange-500 transition-all" placeholder="PRODUCT NAME" />
+                <label className="text-[10px] font-black text-zinc-500 uppercase mb-1.5 block">Product Name</label>
+                <input type="text" value={editingProduct.name} onChange={(e) => handleEditChange('name', e.target.value)}
+                  placeholder="PRODUCT NAME"
+                  className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-semibold outline-none focus:border-orange-500 transition-all text-white" />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 sm:mb-2 block">Price (₦)</label>
-                  <input type="number" value={editingProduct.price} onChange={(e) => handleEditChange('price', e.target.value)} className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 sm:py-2.5 text-xs font-black uppercase outline-none focus:border-orange-500 transition-all" />
-                </div>
-                <div>
-                  <label className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 sm:mb-2 block">Stock Qty</label>
-                  <input type="number" value={editingProduct.stock} onChange={(e) => handleEditChange('stock', e.target.value)} className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 sm:py-2.5 text-xs font-black uppercase outline-none focus:border-orange-500 transition-all" />
-                </div>
+                {[
+                  { label: 'Price (₦)', field: 'price' },
+                  { label: 'Stock Qty', field: 'stock' },
+                ].map(f => (
+                  <div key={f.field}>
+                    <label className="text-[10px] font-black text-zinc-500 uppercase mb-1.5 block">{f.label}</label>
+                    <input type="number" value={editingProduct[f.field]} onChange={(e) => handleEditChange(f.field, e.target.value)}
+                      className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-semibold outline-none focus:border-orange-500 transition-all text-white" />
+                  </div>
+                ))}
               </div>
               <div>
-                <label className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 sm:mb-2 block">Category</label>
-                <select value={editingProduct.category} onChange={(e) => handleEditChange('category', e.target.value)} className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 sm:py-2.5 text-xs font-black uppercase outline-none focus:border-orange-500 transition-all appearance-none cursor-pointer">
-                  <option value="">SELECT CATEGORY</option>
+                <label className="text-[10px] font-black text-zinc-500 uppercase mb-1.5 block">Manual Discount (%)</label>
+                <input type="number" min="0" max="100" value={editingProduct.manual_discount || 0}
+                  onChange={(e) => handleEditChange('manual_discount', e.target.value)}
+                  className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-semibold outline-none focus:border-orange-500 transition-all text-white" />
+                <p className="text-[9px] text-zinc-600 mt-1">Set to 0 to remove. Auto-discount still applies if enabled.</p>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-zinc-500 uppercase mb-1.5 block">Category</label>
+                <select value={editingProduct.category} onChange={(e) => handleEditChange('category', e.target.value)}
+                  className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-semibold outline-none focus:border-orange-500 transition-all text-white appearance-none">
+                  <option value="">Select Category</option>
                   {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                 </select>
               </div>
+              <div>
+                <label className="text-[10px] font-black text-zinc-500 uppercase mb-1.5 block">Expiry Date</label>
+                <input type="date" value={editingProduct.expiry_date || ''} onChange={(e) => handleEditChange('expiry_date', e.target.value)}
+                  className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-sm font-semibold outline-none focus:border-orange-500 transition-all text-white" />
+                {editingProduct.expiry_date && <div className="mt-1"><ExpiryBadge expiryDate={editingProduct.expiry_date} /></div>}
+              </div>
               {editingProduct.image_url && (
                 <div>
-                  <label className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1.5 sm:mb-2 block">Current Image</label>
-                  <img src={editingProduct.image_url} alt="Product" className="w-full h-40 sm:h-48 object-cover rounded-lg border border-zinc-800" onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400?text=No+Image'; }} />
+                  <label className="text-[10px] font-black text-zinc-500 uppercase mb-1.5 block">Current Image</label>
+                  <img src={editingProduct.image_url} alt="Product" className="w-full h-40 object-cover rounded-xl border border-zinc-800"
+                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400?text=No+Image'; }} />
                 </div>
               )}
-              <div className="bg-orange-500/5 border border-orange-500/20 rounded-lg p-3">
-                <p className="text-[9px] sm:text-[10px] text-orange-500/80 font-bold uppercase tracking-wider text-center">💡 Changes will be saved to database</p>
-              </div>
             </div>
-            <div className="flex-shrink-0 p-4 sm:p-6 border-t border-zinc-800 bg-zinc-900/50 flex flex-col sm:flex-row gap-2 sm:gap-3">
-              <button onClick={() => { setShowEditModal(false); setEditingProduct(null); }} className="flex-1 bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-white py-2.5 sm:py-3 rounded-lg text-xs font-black uppercase transition-all">Cancel</button>
-              <button onClick={handleSaveEdit} className="flex-1 bg-orange-600 hover:bg-orange-500 active:scale-95 text-white py-2.5 sm:py-3 rounded-lg text-xs font-black uppercase transition-all shadow-lg shadow-orange-500/20">💾 Save Changes</button>
+            <div className="flex-shrink-0 p-5 border-t border-zinc-800 flex gap-3">
+              <button onClick={() => { setShowEditModal(false); setEditingProduct(null); }}
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white py-3 rounded-xl text-xs font-black uppercase transition-all">
+                Cancel
+              </button>
+              <button onClick={handleSaveEdit}
+                className="flex-1 bg-orange-600 hover:bg-orange-500 text-white py-3 rounded-xl text-xs font-black uppercase transition-all shadow-lg shadow-orange-500/20">
+                💾 Save Changes
+              </button>
             </div>
           </div>
         </div>

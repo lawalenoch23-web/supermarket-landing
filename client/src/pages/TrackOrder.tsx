@@ -1,22 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { Search, Package, Clock, Truck, CheckCircle2, X, MapPin, DollarSign, AlertCircle, HelpCircle, Copy, Calendar } from 'lucide-react';
+import { useTheme } from '../components/ThemeProvider';
+import { Search, Package, Clock, Truck, CheckCircle2, X, MapPin, AlertCircle, HelpCircle, Copy, Calendar, ArrowLeft } from 'lucide-react';
 
-// ✅ Shared date/time formatter
 const formatOrderDateTime = (isoString: string): string => {
   if (!isoString) return '—';
   const d = new Date(isoString);
   return d.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
   });
 };
 
 export default function TrackOrder() {
+  const theme = useTheme();
   const [id, setId] = useState('');
   const [res, setRes] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -24,21 +21,15 @@ export default function TrackOrder() {
   const [showHelp, setShowHelp] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // ✅ Auto-load active order from localStorage
   useEffect(() => {
     const activeOrderId = localStorage.getItem('active_order_id');
-    if (activeOrderId) {
-      setId(activeOrderId);
-      search(activeOrderId);
-    }
+    if (activeOrderId) { setId(activeOrderId); search(activeOrderId); }
     const orderHistory = localStorage.getItem('order_history');
     if (orderHistory) {
       try {
         const parsed = JSON.parse(orderHistory);
         setRecentOrders(Array.isArray(parsed) ? parsed : []);
-      } catch (err) {
-        console.error('Error loading order history:', err);
-      }
+      } catch (err) { console.error('Error loading order history:', err); }
     }
   }, []);
 
@@ -48,15 +39,13 @@ export default function TrackOrder() {
     setLoading(true);
     setShowHelp(false);
     const cleanId = queryId.replace('#', '').trim();
-    const { data, error } = await supabase.from('orders').select('*').eq('id', cleanId).single();
-    setRes(data || "Not Found");
+    const { data } = await supabase.from('orders').select('*').eq('id', cleanId).single();
+    setRes(data || 'Not Found');
+    if (data) autoCancelIfExpired(data);
     setLoading(false);
   };
 
-  const quickSearch = (orderId: string) => {
-    setId(orderId);
-    search(orderId);
-  };
+  const quickSearch = (orderId: string) => { setId(orderId); search(orderId); };
 
   const copyOrderId = (orderId: string) => {
     navigator.clipboard.writeText(`${orderId}`);
@@ -64,346 +53,446 @@ export default function TrackOrder() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const getStatusSteps = (currentStatus: string) => {
-    const statuses = ['PENDING', 'PREPARING', 'READY', 'DONE'];
-    const currentIndex = statuses.indexOf(currentStatus);
-    return statuses.map((status, index) => ({
-      label: status,
-      icon: index === 0 ? Clock : index === 1 ? Package : index === 2 ? Truck : CheckCircle2,
+  const getStatusSteps = (currentStatus: string, isDelivery: boolean) => {
+    if (currentStatus === 'CANCELLED') {
+      return [{ label: 'CANCELLED', icon: X, completed: true, active: false }];
+    }
+    const base = isDelivery
+      ? ['AWAITING_CONFIRMATION', 'PENDING', 'PREPARING', 'READY', 'DONE', 'COMPLETED']
+      : ['PENDING', 'PREPARING', 'READY', 'DONE', 'COMPLETED'];
+    const mappedStatus = currentStatus === 'OUT_FOR_DELIVERY' ? 'READY' : currentStatus;
+    const currentIndex = base.indexOf(mappedStatus);
+    const icons = isDelivery
+      ? [AlertCircle, Clock, Package, Truck, CheckCircle2, CheckCircle2]
+      : [Clock, Package, Truck, CheckCircle2, CheckCircle2];
+    const labels: Record<string, string> = {
+      AWAITING_CONFIRMATION: 'CONFIRM ORDER',
+      PENDING: 'PENDING',
+      PREPARING: 'PREPARING',
+      READY: 'READY',
+      DONE: 'DELIVERED',
+      COMPLETED: 'CONFIRMED',
+    };
+    return base.map((status, index) => ({
+      label: labels[status] || status,
+      icon: icons[index],
       completed: index <= currentIndex,
       active: index === currentIndex,
     }));
   };
 
-  // ─── CONFIRM RECEIPT FUNCTION ───
   const confirmReceipt = async (orderId: number) => {
     if (!confirm('Confirm that you have received your order?')) return;
-
     try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ status: 'COMPLETED' })
-        .eq('id', orderId);
-
+      const { error } = await supabase.from('orders').update({ status: 'COMPLETED' }).eq('id', orderId);
       if (error) throw error;
-
-      // Update local state immediately (no reload needed)
-      if (typeof res === 'object' && res !== null) {
-        setRes({ ...res, status: 'COMPLETED' });
-      }
-
+      if (typeof res === 'object' && res !== null) setRes({ ...res, status: 'COMPLETED' });
       alert('✅ Thank you for confirming! Order marked as completed.');
     } catch (err: any) {
       alert('Failed to confirm: ' + err.message);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 md:py-12">
+  const statusColor = (status: string) => {
+    switch (status) {
+        // Add these two cases inside the statusColor switch:
+      case 'AWAITING_CONFIRMATION': return 'bg-yellow-500/15 text-yellow-400 border-yellow-500/25';
+      case 'CANCELLED': return 'bg-red-500/15 text-red-400 border-red-500/25';
+      case 'PENDING': return 'bg-amber-500/15 text-amber-400 border-amber-500/25';
+      case 'PREPARING': return 'bg-blue-500/15 text-blue-400 border-blue-500/25';
+      case 'READY': return 'bg-green-500/15 text-green-400 border-green-500/25';
+      case 'DONE': return 'bg-orange-500/15 text-orange-400 border-orange-500/25';
+      case 'COMPLETED': return 'bg-purple-500/15 text-purple-400 border-purple-500/25';
+      default: return 'bg-zinc-800 text-zinc-400 border-zinc-700';
+    }
+  };
 
-        {/* STICKY HEADER */}
-        <div className="sticky top-0 bg-black/95 backdrop-blur-md z-50 pb-6 md:pb-8 mb-8 md:mb-12 border-b border-zinc-900">
-          <div className="flex flex-col items-center text-center mb-6">
-            <Package className="text-orange-500 mb-4" size={40} />
-            <h1 className="text-3xl md:text-4xl font-black italic tracking-tighter uppercase">Track Order</h1>
-            <p className="text-zinc-600 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Real-Time Status Updates</p>
+  const autoCancelIfExpired = async (order: any) => {
+    if (order.status !== 'AWAITING_CONFIRMATION') return;
+    const age = (Date.now() - new Date(order.created_at).getTime()) / 1000;
+    if (age > 900) { // 15 minutes
+      await supabase.from('orders').update({ status: 'CANCELLED' }).eq('id', order.id);
+      setRes({ ...order, status: 'CANCELLED' });
+    }
+  };
+
+  const confirmFromTrackPage = async (orderId: number) => {
+    if (!confirm('Confirm this is your order and you want to proceed?')) return;
+    const { error } = await supabase.from('orders').update({ status: 'PENDING' }).eq('id', orderId);
+    if (!error) setRes((prev: any) => ({ ...prev, status: 'PENDING' }));
+    else alert('Failed to confirm. Please try again.');
+  };
+  
+  return (
+    <div className="min-h-screen font-sans" style={{ background: 'var(--bg-color)', color: 'var(--text-color)' }}>
+      <style>{`
+        .trk-scroll::-webkit-scrollbar { width: 4px; }
+        .trk-scroll::-webkit-scrollbar-track { background: transparent; }
+        .trk-scroll::-webkit-scrollbar-thumb { background: var(--primary-color); border-radius: 99px; opacity: 0.4; }
+        @keyframes slide-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        .slide-up { animation: slide-up 0.35s ease both; }
+        .trk-input { background: var(--input-bg); border-color: var(--input-border); color: var(--text-color); }
+        .trk-input:focus { border-color: var(--primary-color); }
+        .trk-card { background: var(--card-bg); border-color: var(--card-border); }
+        .trk-nav { background: var(--nav-bg); border-color: var(--card-border); }
+      `}</style>
+
+      {/* ── BRANDED NAV ── */}
+      <nav className="sticky top-0 z-50 trk-nav backdrop-blur-xl border-b">
+        <div className="max-w-3xl mx-auto px-4 md:px-6 h-14 flex items-center justify-between">
+          <a href="/" className="flex items-center gap-2.5 group">
+            {theme.logo_url ? (
+              <img src={theme.logo_url} alt={theme.store_name} className="h-8 w-8 object-contain rounded-lg" />
+            ) : (
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: 'var(--primary-color)' }}>
+                <Package size={16} className="text-black" />
+              </div>
+            )}
+            <span className="text-sm font-black uppercase tracking-tight" style={{ color: 'var(--text-color)' }}>
+              {theme.store_name}
+            </span>
+          </a>
+          <a href="/" className="flex items-center gap-1.5 text-xs font-black uppercase transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--primary-color)'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'}>
+            <ArrowLeft size={13} /> Back to Store
+          </a>
+        </div>
+      </nav>
+
+      {/* ── STICKY SEARCH HEADER ── */}
+      <div className="sticky top-14 z-40 backdrop-blur-xl border-b trk-nav">
+        <div className="max-w-3xl mx-auto px-4 md:px-6 py-5 md:py-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'color-mix(in srgb, var(--primary-color) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--primary-color) 20%, transparent)' }}>
+              <Package size={17} style={{ color: 'var(--primary-color)' }} />
+            </div>
+            <div>
+              <h1 className="text-xl md:text-2xl font-black uppercase tracking-tight leading-none" style={{ color: 'var(--text-color)' }}>Track Order</h1>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mt-0.5" style={{ color: 'var(--text-muted)' }}>Real-time updates</p>
+            </div>
           </div>
 
-          {/* SEARCH BAR */}
-          <div className="flex gap-2 w-full max-w-2xl mx-auto">
+          {/* Search */}
+          <div className="flex gap-2 relative">
             <div className="flex-1 relative">
               <input
-                placeholder="ENTER ORDER ID (e.g., 123 or #123)"
+                placeholder="Order ID (e.g. 123 or #123)"
                 value={id}
-                className="w-full bg-zinc-950 border border-zinc-800 p-4 md:p-5 rounded-2xl text-xs md:text-sm font-black uppercase outline-none focus:border-orange-500 transition-all pl-4"
+                className="trk-input w-full border rounded-xl py-3.5 pl-4 pr-4 text-sm font-semibold outline-none transition-all"
                 onChange={(e) => setId(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && search()}
                 onFocus={() => !id && setShowHelp(true)}
                 onBlur={() => setTimeout(() => setShowHelp(false), 200)}
               />
               {showHelp && !id && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-orange-500/30 p-4 rounded-xl animate-in fade-in slide-in-from-top-2 z-10">
+                <div className="absolute top-full left-0 right-0 mt-2 border p-4 rounded-xl z-10 shadow-xl trk-card"
+                  style={{ borderColor: 'color-mix(in srgb, var(--primary-color) 20%, transparent)' }}>
                   <div className="flex items-start gap-2">
-                    <HelpCircle size={16} className="text-orange-500 flex-shrink-0 mt-0.5" />
+                    <HelpCircle size={14} style={{ color: 'var(--primary-color)' }} className="flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-xs font-bold text-orange-400 mb-1">💡 Where to find your Order ID:</p>
-                      <ul className="text-xs text-zinc-400 space-y-1">
-                        <li>• Check your downloaded receipt image</li>
-                        <li>• Look in your clipboard if you copied it</li>
-                        <li>• Check recent orders below</li>
+                      <p className="text-xs font-bold mb-1.5" style={{ color: 'var(--primary-color)' }}>Where's my Order ID?</p>
+                      <ul className="text-xs space-y-1" style={{ color: 'var(--text-muted)' }}>
                         <li>• Auto-filled if you came from checkout</li>
+                        <li>• On your downloaded receipt image</li>
+                        <li>• In your clipboard if you copied it</li>
                       </ul>
                     </div>
                   </div>
                 </div>
               )}
             </div>
-            <button onClick={() => search()} disabled={loading} className="bg-orange-600 px-6 md:px-8 rounded-2xl hover:bg-orange-500 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
-              {loading ? <div className="animate-spin h-5 w-5 border-2 border-black border-t-transparent rounded-full" /> : <Search size={20} className="text-black" />}
+            <button onClick={() => search()} disabled={loading}
+              className="px-5 rounded-xl transition-all active:scale-95 flex items-center justify-center min-w-[52px] disabled:opacity-50"
+              style={{ background: 'var(--primary-color)' }}>
+              {loading
+                ? <div className="animate-spin h-4 w-4 border-2 border-black border-t-transparent rounded-full" />
+                : <Search size={18} className="text-black" />
+              }
             </button>
           </div>
 
-          {/* Recent Orders Quick Access */}
+          {/* Recent orders */}
           {recentOrders.length > 0 && !res && (
-            <div className="mt-6 max-w-2xl mx-auto">
-              <p className="text-xs font-black text-zinc-600 uppercase mb-3 text-center">📋 Recent Orders</p>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {recentOrders.slice(0, 3).map((orderId) => (
-                  <button key={orderId} onClick={() => quickSearch(orderId)} className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-orange-500 px-4 py-2 rounded-xl text-xs font-black uppercase transition-all active:scale-95 flex items-center gap-2">
-                    <Package size={12} className="text-orange-500" /> #{orderId}
-                  </button>
-                ))}
-              </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <span className="text-[10px] font-bold uppercase self-center mr-1" style={{ color: 'var(--text-muted)' }}>Recent:</span>
+              {recentOrders.slice(0, 3).map((orderId) => (
+                <button key={orderId} onClick={() => quickSearch(orderId)}
+                  className="flex items-center gap-1.5 border px-3 py-1.5 rounded-lg text-xs font-black transition-all active:scale-95 trk-card"
+                  style={{ color: 'var(--text-color)' }}>
+                  <Package size={10} style={{ color: 'var(--primary-color)' }} /> #{orderId}
+                </button>
+              ))}
             </div>
           )}
         </div>
+      </div>
 
-        {/* LOADING STATE */}
+      <div className="max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-8">
+
+        {/* Loading */}
         {loading && (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="animate-spin h-12 w-12 border-4 border-orange-500 border-t-transparent rounded-full mb-4" />
-            <p className="text-orange-500 text-sm font-black uppercase animate-pulse">Searching Database...</p>
+          <div className="flex flex-col items-center justify-center py-24">
+            <div className="animate-spin h-10 w-10 border-[3px] border-t-transparent rounded-full mb-4"
+              style={{ borderColor: 'var(--primary-color)', borderTopColor: 'transparent' }} />
+            <p className="text-xs font-black uppercase tracking-widest animate-pulse" style={{ color: 'var(--primary-color)' }}>Searching...</p>
           </div>
         )}
 
-        {/* NOT FOUND STATE */}
-        {res === "Not Found" && !loading && (
-          <div className="max-w-lg mx-auto text-center py-20 animate-in fade-in slide-in-from-bottom-4">
-            <div className="bg-zinc-950 border border-red-900/30 p-12 rounded-3xl">
-              <X size={48} className="text-red-500 mx-auto mb-4" />
-              <h3 className="text-2xl font-black uppercase mb-2">Order Not Found</h3>
-              <p className="text-zinc-500 text-xs font-bold mb-6">Order ID #{id} doesn't exist. Please check the ID and try again.</p>
-              <div className="bg-zinc-900/50 border border-zinc-800 p-4 rounded-xl text-left">
-                <p className="text-xs font-black text-zinc-400 uppercase mb-2">💡 Tips:</p>
-                <ul className="text-xs text-zinc-500 space-y-1">
-                  <li>• Make sure you entered the correct ID</li>
-                  <li>• Remove any '#' symbol if included</li>
-                  <li>• Check your recent orders above</li>
-                </ul>
+        {/* Not Found */}
+        {res === 'Not Found' && !loading && (
+          <div className="max-w-sm mx-auto text-center py-16 slide-up">
+            <div className="border p-10 rounded-2xl trk-card" style={{ borderColor: 'rgba(239,68,68,0.15)' }}>
+              <div className="w-12 h-12 bg-red-500/10 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <X size={22} className="text-red-500" />
+              </div>
+              <h3 className="text-lg font-black uppercase mb-2" style={{ color: 'var(--text-color)' }}>Not Found</h3>
+              <p className="text-xs font-medium mb-5" style={{ color: 'var(--text-muted)' }}>Order #{id} doesn't exist. Please check the ID.</p>
+              <div className="border p-4 rounded-xl text-left space-y-1.5" style={{ background: 'rgba(0,0,0,0.2)', borderColor: 'var(--card-border)' }}>
+                {['Double-check the order number', "Remove '#' if included", 'Try a recent order from the list above'].map(tip => (
+                  <p key={tip} className="text-xs flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+                    <span className="w-1 h-1 rounded-full flex-shrink-0" style={{ background: 'var(--primary-color)' }} />{tip}
+                  </p>
+                ))}
               </div>
             </div>
           </div>
         )}
 
-        {/* ORDER FOUND - TWO PANE LAYOUT */}
-        {res && res !== "Not Found" && !loading && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 animate-in fade-in slide-in-from-bottom-4">
+        {/* Order Found */}
+        {res && res !== 'Not Found' && !loading && (
+          <div className="space-y-4 slide-up">
 
-            {/* LEFT PANE - ORDER STATUS TIMELINE */}
-            <div className="bg-zinc-950 border border-zinc-900 p-6 md:p-8 rounded-3xl">
-              <div className="flex items-center justify-between mb-6">
+            {/* ORDER HEADER CARD */}
+            <div className="border rounded-2xl p-5 md:p-6 trk-card">
+              <div className="flex items-start justify-between mb-4">
                 <div>
-                  <p className="text-xs font-black text-zinc-500 uppercase mb-1">Order ID</p>
+                  <p className="text-[10px] font-black uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Order Reference</p>
                   <div className="flex items-center gap-2">
-                    <p className="text-2xl md:text-3xl font-black italic">#{res.id}</p>
-                    <button onClick={() => copyOrderId(res.id)} className="text-zinc-600 hover:text-orange-500 transition-colors p-2" title="Copy Order ID">
-                      {copied ? <CheckCircle2 size={16} className="text-green-500" /> : <Copy size={16} />}
+                    <h2 className="text-3xl md:text-4xl font-black tracking-tight" style={{ color: 'var(--text-color)' }}>#{res.id}</h2>
+                    <button onClick={() => copyOrderId(res.id)}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg border transition-all"
+                      style={{ background: 'var(--input-bg)', borderColor: 'var(--card-border)', color: 'var(--text-muted)' }}>
+                      {copied ? <CheckCircle2 size={14} className="text-green-500" /> : <Copy size={14} />}
                     </button>
                   </div>
                 </div>
-                <div className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${res.status === 'DONE' ? 'bg-green-600/20 text-green-500' : res.status === 'READY' ? 'bg-blue-600/20 text-blue-500' : res.status === 'PREPARING' ? 'bg-yellow-600/20 text-yellow-500' : 'bg-orange-600/20 text-orange-500'}`}>
-                  {res.status}
+                <div className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase border ${statusColor(res.status)}`}>
+                  {res.status.replace('_', ' ')}
                 </div>
               </div>
-
-              {/* ✅ Order placed date/time — prominent display */}
-              <div className="bg-zinc-900/60 border border-zinc-800 px-4 py-3 rounded-xl mb-6 flex items-center gap-3">
-                <Calendar size={16} className="text-orange-500 flex-shrink-0" />
+              <div className="flex items-center gap-2.5 border px-4 py-3 rounded-xl"
+                style={{ background: 'rgba(0,0,0,0.2)', borderColor: 'var(--card-border)' }}>
+                <Calendar size={14} style={{ color: 'var(--primary-color)' }} className="flex-shrink-0" />
                 <div>
-                  <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest">Order Placed</p>
-                  <p className="text-sm font-black text-white">{formatOrderDateTime(res.created_at)}</p>
+                  <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Order Placed</p>
+                  <p className="text-sm font-bold mt-0.5" style={{ color: 'var(--text-color)' }}>{formatOrderDateTime(res.created_at)}</p>
                 </div>
               </div>
+            </div>
 
-              {/* PROGRESS STEPPER */}
+            {/* PROGRESS STEPPER */}
+            <div className="border rounded-2xl p-5 md:p-6 trk-card">
+              <p className="text-[10px] font-black uppercase tracking-wider mb-5" style={{ color: 'var(--text-muted)' }}>Order Progress</p>
               <div className="relative">
-                <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-zinc-800" />
-                <div className="space-y-6 relative">
-                  {getStatusSteps(res.status).map((step) => {
+                <div className="absolute left-4 top-4 bottom-4 w-px" style={{ background: 'var(--card-border)' }} />
+                <div className="space-y-5 relative">
+                  {getStatusSteps(res.status, !!res.address).map((step) => {
                     const Icon = step.icon;
                     return (
-                      <div key={step.label} className="flex items-start gap-4">
-                        <div className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all ${step.completed ? 'bg-orange-500 border-orange-500' : 'bg-zinc-900 border-zinc-700'}`}>
-                          <Icon size={18} className={step.completed ? 'text-black' : 'text-zinc-600'} />
+                      <div key={step.label} className="flex items-center gap-4">
+                        <div className="relative z-10 w-8 h-8 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all"
+                          style={step.completed
+                            ? { background: 'var(--primary-color)', borderColor: 'var(--primary-color)', boxShadow: '0 0 12px color-mix(in srgb, var(--primary-color) 30%, transparent)' }
+                            : { background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+                          <Icon size={14} style={{ color: step.completed ? '#000' : 'var(--text-muted)' }} />
                         </div>
-                        <div className="flex-1 pb-2">
-                          <p className={`text-sm font-black uppercase ${step.completed ? 'text-white' : 'text-zinc-600'}`}>{step.label}</p>
-                          <p className="text-xs text-zinc-600 font-bold mt-1">{step.completed ? (step.active ? 'In Progress' : 'Completed') : 'Pending'}</p>
+                        <div className="flex-1 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-black uppercase" style={{ color: step.completed ? 'var(--text-color)' : 'var(--text-muted)' }}>{step.label}</p>
+                            <p className="text-[10px] font-semibold mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                              {step.active ? '⟶ In progress' : step.completed ? 'Done' : 'Waiting'}
+                            </p>
+                          </div>
+                          {step.active && <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'var(--primary-color)' }} />}
                         </div>
                       </div>
                     );
                   })}
+                </div>
+              </div>
 
-              {/* CONFIRM RECEIPT BUTTON (for delivered orders) */}
-              {res.status === 'DONE' && (
-                <div className="mt-6 bg-gradient-to-r from-green-500/10 to-emerald-500/10 border-2 border-green-500/30 p-6 rounded-2xl">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center flex-shrink-0">
-                      <svg className="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
+              {res.status === 'AWAITING_CONFIRMATION' && (
+                <div className="mt-5 rounded-xl p-4" style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)' }}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-8 h-8 bg-yellow-500/15 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <AlertCircle size={15} className="text-yellow-400" />
                     </div>
-                    <div className="flex-1">
-                      <p className="font-black text-green-400 text-sm uppercase">Order Delivered!</p>
-                      <p className="text-xs text-zinc-400 mt-1">Please confirm that you've received your order</p>
+                    <div>
+                      <p className="text-sm font-black text-yellow-400">Action Required</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">Confirm your order to notify the driver</p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => confirmReceipt(res.id)}
-                    className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-3"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Confirm Receipt
+                  <button onClick={() => confirmFromTrackPage(res.id)}
+                    className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black py-3.5 rounded-xl uppercase text-sm tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2">
+                    ✅ Confirm My Order
                   </button>
                 </div>
               )}
 
-              {/* COMPLETED MESSAGE */}
+              {res.status === 'CANCELLED' && (
+                <div className="mt-5 rounded-xl p-4 text-center" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  <p className="text-sm font-black text-red-400">✗ Order Cancelled</p>
+                  <p className="text-xs text-zinc-500 mt-1">This order expired before confirmation. Please place a new order.</p>
+                </div>
+              )}
+
+              {/* Confirm Receipt */}
+              {(res.status === 'DONE' || res.status === 'OUT_FOR_DELIVERY') && (
+                <div className="mt-5 rounded-xl p-4" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-8 h-8 bg-green-500/15 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <CheckCircle2 size={15} className="text-green-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-black text-green-400">Order Delivered!</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">Please confirm you received your order</p>
+                    </div>
+                  </div>
+                  <button onClick={() => confirmReceipt(res.id)}
+                    className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-3.5 rounded-xl uppercase text-sm tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2">
+                    <CheckCircle2 size={16} /> Confirm Receipt
+                  </button>
+                </div>
+              )}
+
               {res.status === 'COMPLETED' && (
-                <div className="mt-6 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-2 border-blue-500/30 p-6 rounded-2xl text-center">
-                  <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <p className="font-black text-blue-400 text-lg uppercase mb-2">✓ Order Completed</p>
-                  <p className="text-xs text-zinc-400">Thank you for your confirmation!</p>
+                <div className="mt-5 rounded-xl p-4 text-center" style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)' }}>
+                  <p className="text-sm font-black text-purple-400">✓ Order Completed</p>
+                  <p className="text-xs text-zinc-500 mt-1">Thank you for your confirmation!</p>
                 </div>
               )}
-
-              </div>
-              </div>
-
-              {/* ORDER DETAILS */}
-              <div className="mt-8 pt-6 border-t border-zinc-900 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-zinc-500 font-black uppercase">Customer</span>
-                  <span className="text-xs font-black uppercase">{res.customer_name}</span>
-                </div>
-                {res.address && res.address !== null && (
-                  <div className="flex items-start gap-2 bg-orange-500/5 p-3 rounded-xl border border-orange-500/20">
-                    <MapPin size={14} className="text-orange-500 mt-0.5 flex-shrink-0" />
-                    <div className="flex-1">
-                      <p className="text-[9px] text-orange-500 font-black uppercase mb-1">Delivery Address</p>
-                      <p className="text-xs font-bold mb-2">{res.address}</p>
-                      {res.payment_method && (
-                        <p className="text-[9px] text-zinc-500 font-bold">Payment: {res.payment_method === 'cash' ? '💵 Cash' : '📱 Transfer'} on delivery</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {(!res.address || res.address === null) && (
-                  <div className="bg-blue-500/10 border border-blue-500/30 p-3 rounded-xl text-center">
-                    <p className="text-xs text-blue-400 font-black uppercase">📦 Pickup Order</p>
-                  </div>
-                )}
-              </div>
             </div>
 
-            {/* RIGHT PANE - ORDER SUMMARY */}
-            <div className="bg-zinc-950 border border-zinc-900 p-6 md:p-8 rounded-3xl">
-              <h3 className="text-xl font-black italic uppercase mb-6 flex items-center gap-2">
-                <Package size={20} className="text-orange-500" /> Order Summary
-              </h3>
+            {/* ORDER DETAILS */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="border rounded-2xl p-5 trk-card">
+                <p className="text-[10px] font-black uppercase tracking-wider mb-4" style={{ color: 'var(--text-muted)' }}>Customer Info</p>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>Name</span>
+                    <span className="text-sm font-black uppercase" style={{ color: 'var(--text-color)' }}>{res.customer_name}</span>
+                  </div>
+                  {res.address ? (
+                    <div className="p-3 rounded-xl" style={{ background: 'color-mix(in srgb, var(--primary-color) 5%, transparent)', border: '1px solid color-mix(in srgb, var(--primary-color) 15%, transparent)' }}>
+                      <div className="flex items-start gap-2">
+                        <MapPin size={13} style={{ color: 'var(--primary-color)' }} className="flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[9px] font-black uppercase mb-1" style={{ color: 'var(--primary-color)' }}>Delivery Address</p>
+                          <p className="text-xs font-bold leading-relaxed" style={{ color: 'var(--text-color)' }}>{res.address}</p>
+                          {res.payment_method && (
+                            <p className="text-[10px] mt-1.5 font-semibold" style={{ color: 'var(--text-muted)' }}>
+                              {res.payment_method === 'cash' ? '💵 Cash' : '📱 Transfer'} on delivery
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl text-center" style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)' }}>
+                      <p className="text-xs text-blue-400 font-black uppercase">📦 Pickup Order</p>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-              {/* ITEMS LIST */}
-              <div className="bg-black/40 border border-zinc-900 rounded-2xl p-5 mb-6">
-                <p className="text-[9px] text-zinc-600 font-black uppercase mb-3">Items Ordered</p>
+              <div className="border rounded-2xl p-5 trk-card">
+                <p className="text-[10px] font-black uppercase tracking-wider mb-4" style={{ color: 'var(--text-muted)' }}>Order Summary</p>
+                <div className="border rounded-xl p-3 mb-3 max-h-28 overflow-y-auto trk-scroll"
+                  style={{ background: 'rgba(0,0,0,0.2)', borderColor: 'var(--card-border)' }}>
+                  <p className="text-[9px] font-black uppercase mb-2" style={{ color: 'var(--text-muted)' }}>Items</p>
+                  <div className="space-y-1.5">
+                    {res.items.split(', ').map((item: string, idx: number) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <div className="w-1 h-1 rounded-full flex-shrink-0" style={{ background: 'var(--primary-color)' }} />
+                        <p className="text-xs font-medium" style={{ color: 'var(--text-color)' }}>{item}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
                 <div className="space-y-2">
-                  {res.items.split(', ').map((item: string, idx: number) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 bg-orange-500 rounded-full" />
-                      <p className="text-sm font-medium">{item}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* PRICING BREAKDOWN */}
-              <div className="space-y-3 pb-6 border-b border-zinc-900">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-zinc-500 font-bold uppercase">Products Total</span>
-                  <span className="text-sm font-bold">₦{Number(res.total_price).toLocaleString()}</span>
-                </div>
-                {res.discount_code && res.discount_amount > 0 && (
-                  <div className="flex justify-between items-center text-green-500">
-                    <span className="text-xs font-bold uppercase">Discount ({res.discount_code})</span>
-                    <span className="text-sm font-bold">-₦{Number(res.discount_amount).toFixed(0)}</span>
+                  <div className="flex justify-between">
+                    <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>Products</span>
+                    <span className="text-sm font-bold" style={{ color: 'var(--text-color)' }}>₦{Number(res.total_price).toLocaleString()}</span>
                   </div>
-                )}
-                {res.address && res.address !== null && (
-                  <>
-                    {res.delivery_fee > 0 ? (
-                      <div className="bg-green-500/10 border border-green-500/30 p-3 rounded-xl">
-                        <div className="flex justify-between items-center mb-2">
-                          <div>
-                            <p className="text-xs text-green-400 font-black uppercase">Delivery Fee</p>
-                            <p className="text-[9px] text-zinc-500 mt-1">Distance: {res.delivery_distance}km</p>
-                          </div>
-                          <p className="text-lg font-black text-green-500">₦{Number(res.delivery_fee).toLocaleString()}</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="bg-yellow-500/10 border border-yellow-500/30 p-3 rounded-xl">
-                        <div className="flex items-start gap-2">
-                          <AlertCircle size={14} className="text-yellow-500 flex-shrink-0 mt-0.5" />
-                          <div>
-                            <p className="text-xs text-yellow-500 font-black uppercase mb-1">Delivery Fee Pending</p>
-                            <p className="text-[9px] text-yellow-500/70">Fee will be calculated based on actual distance and collected on delivery</p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {/* TOTAL */}
-              <div className="flex justify-between items-center pt-6">
-                <span className="text-lg font-black italic uppercase">
-                  {res.address && res.address !== null && res.delivery_fee > 0 ? 'Total Amount' : 'Total Paid'}
-                </span>
-                <span className="text-2xl md:text-3xl font-black italic text-orange-500">₦{(res.final_total || res.total_price).toLocaleString()}</span>
-              </div>
-
-              {res.address && res.address !== null && res.delivery_fee === 0 && (
-                <div className="mt-4 bg-zinc-900/50 border border-zinc-800 p-3 rounded-xl">
-                  <p className="text-[9px] text-zinc-500 text-center font-bold">+ Delivery fee (to be calculated and collected on arrival)</p>
+                  {res.discount_code && res.discount_amount > 0 && (
+                    <div className="flex justify-between text-green-500">
+                      <span className="text-xs font-bold">Discount ({res.discount_code})</span>
+                      <span className="text-sm font-bold">−₦{Number(res.discount_amount).toFixed(0)}</span>
+                    </div>
+                  )}
+                  {res.address && res.delivery_fee > 0 ? (
+                    <div className="flex justify-between text-blue-400">
+                      <span className="text-xs font-bold">Delivery ({res.delivery_distance}km)</span>
+                      <span className="text-sm font-bold">₦{Number(res.delivery_fee).toLocaleString()}</span>
+                    </div>
+                  ) : res.address ? (
+                    <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                      <AlertCircle size={11} className="text-amber-500 flex-shrink-0" />
+                      <p className="text-[10px] text-amber-400 font-semibold">Delivery fee calculated on arrival</p>
+                    </div>
+                  ) : null}
+                  <div className="flex justify-between items-center pt-2 border-t mt-1" style={{ borderColor: 'var(--card-border)' }}>
+                    <span className="text-sm font-black uppercase" style={{ color: 'var(--text-color)' }}>Total</span>
+                    <span className="text-xl font-black" style={{ color: 'var(--primary-color)' }}>₦{(res.final_total || res.total_price).toLocaleString()}</span>
+                  </div>
                 </div>
-              )}
-
-              {/* ACTION BUTTONS */}
-              <div className="mt-8 space-y-2">
-                <button onClick={() => window.print()} className="w-full bg-zinc-900 hover:bg-zinc-800 text-white py-4 rounded-2xl text-xs font-black uppercase transition-all">Print Receipt</button>
-                <button onClick={() => { setRes(null); setId(''); }} className="w-full bg-black border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white py-4 rounded-2xl text-xs font-black uppercase transition-all">Track Another Order</button>
               </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button onClick={() => window.print()}
+                className="flex-1 border py-3.5 rounded-xl text-xs font-black uppercase tracking-wide transition-all trk-card"
+                style={{ color: 'var(--text-color)' }}>
+                Print Receipt
+              </button>
+              <button onClick={() => { setRes(null); setId(''); }}
+                className="flex-1 border py-3.5 rounded-xl text-xs font-black uppercase tracking-wide transition-all trk-card"
+                style={{ color: 'var(--text-muted)' }}>
+                Track Another
+              </button>
             </div>
           </div>
         )}
 
-        {/* EMPTY STATE */}
+        {/* Empty state */}
         {!res && !loading && (
-          <div className="max-w-lg mx-auto text-center py-20">
-            <div className="bg-zinc-950/50 border border-zinc-900 p-12 md:p-16 rounded-3xl">
-              <Package size={64} className="text-zinc-800 mx-auto mb-6" />
-              <h3 className="text-2xl font-black italic uppercase mb-3">Track Your Order</h3>
-              <p className="text-zinc-600 text-xs font-bold leading-relaxed mb-6">Enter your order ID above to view real-time status updates and delivery information.</p>
-              <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl text-left">
-                <p className="text-xs font-black text-orange-500 uppercase mb-3 text-center">📋 How to Track</p>
-                <div className="space-y-2 text-xs text-zinc-400">
-                  <div className="flex gap-2"><span className="text-orange-500 font-black">1.</span><p>Find your Order ID on your receipt</p></div>
-                  <div className="flex gap-2"><span className="text-orange-500 font-black">2.</span><p>Enter the ID above (auto-filled from checkout)</p></div>
-                  <div className="flex gap-2"><span className="text-orange-500 font-black">3.</span><p>View live updates on your order's status</p></div>
-                  <div className="flex gap-2"><span className="text-orange-500 font-black">4.</span><p>See the full date & time your order was placed</p></div>
+          <div className="max-w-sm mx-auto text-center py-16">
+            <div className="w-16 h-16 border rounded-2xl flex items-center justify-center mx-auto mb-5 trk-card">
+              <Package size={28} style={{ color: 'var(--text-muted)' }} />
+            </div>
+            <h3 className="text-xl font-black uppercase mb-2" style={{ color: 'var(--text-color)' }}>Track Your Order</h3>
+            <p className="text-xs font-medium leading-relaxed mb-6" style={{ color: 'var(--text-muted)' }}>Enter your order ID above to see real-time status and delivery information.</p>
+            <div className="border p-5 rounded-2xl text-left trk-card">
+              <p className="text-[10px] font-black uppercase mb-3 text-center tracking-wider" style={{ color: 'var(--primary-color)' }}>How It Works</p>
+              {[
+                'Find your Order ID on the receipt',
+                'Enter or paste it in the search bar',
+                'See live updates on your order status',
+                'Confirm receipt once delivered',
+              ].map((step, i) => (
+                <div key={i} className="flex items-start gap-2.5 mb-2 last:mb-0">
+                  <span className="font-black text-xs flex-shrink-0" style={{ color: 'var(--primary-color)' }}>{i + 1}.</span>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{step}</p>
                 </div>
-              </div>
+              ))}
             </div>
           </div>
         )}
-
       </div>
     </div>
   );
